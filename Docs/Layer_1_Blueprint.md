@@ -46,13 +46,13 @@ Layer 1 is done only when all of the following are true on the same machine:
 
 These files and folders are mandatory deliverables for Layer 1:
 
-- [ ] Create `Docs/Notes/`
+- [x] Create `Docs/Notes/`
 - [ ] Create `Docs/Test_Logs/`
 - [ ] Create `Docs/Screenshots/`
-- [ ] Create `Docs/Support_Matrix.md`
+- [x] Create `Docs/Support_Matrix.md`
 - [ ] Create `Docs/Manual_Test_Plan.md`
-- [ ] Create `Docs/Architecture_Notes.md`
-- [ ] Create `Docs/Release_Checklist.md`
+- [x] Create `Docs/Architecture_Notes.md`
+- [x] Create `Docs/Release_Checklist.md`
 - [ ] Create `Tests/Fixtures/Markdown/`
 - [ ] Create `Tests/Fixtures/RenderedHTML/`
 - [ ] Create `Tests/Fixtures/FinderAX/`
