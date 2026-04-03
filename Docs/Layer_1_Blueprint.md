@@ -71,8 +71,8 @@ These files and folders are mandatory deliverables for Layer 1:
 
 ## Layer 1B — App Shell Completion
 
-- [x] Create SwiftUI app entrypoint
-- [x] Create `AppDelegate`
+- [ ] Create SwiftUI app entrypoint
+- [ ] Create `AppDelegate`
 - [ ] Replace menu bar text-only status item with a stable symbol or app icon
 - [ ] Add menu items for `Pause Monitoring`, `Resume Monitoring`, `Request Accessibility Permission`, `Open Test Notes`, and `Quit`
 - [ ] Keep menu titles synchronized with current monitoring state
@@ -82,8 +82,8 @@ These files and folders are mandatory deliverables for Layer 1:
 
 ## Layer 1C — Accessibility Permission Flow
 
-- [x] Add runtime Accessibility trust check
-- [x] Add explicit permission prompt trigger
+- [ ] Add runtime Accessibility trust check
+- [ ] Add explicit permission prompt trigger
 - [ ] Add a dedicated permission state object
 - [ ] Add a visible “permission missing” status in the menu
 - [ ] Add a one-time explanatory copy block for why Accessibility is required
@@ -93,9 +93,9 @@ These files and folders are mandatory deliverables for Layer 1:
 
 ## Layer 1D — Hover Detection Core
 
-- [x] Add global mouse movement monitoring
-- [x] Add local mouse movement monitoring
-- [x] Add 1-second hover debounce
+- [ ] Add global mouse movement monitoring
+- [ ] Add local mouse movement monitoring
+- [ ] Add 1-second hover debounce
 - [ ] Track the last screen coordinate that armed the hover timer
 - [ ] Track the last resolved Finder item identity
 - [ ] Cancel preview immediately on mouse motion after preview is shown
@@ -106,7 +106,7 @@ These files and folders are mandatory deliverables for Layer 1:
 
 ## Layer 1E — Finder Frontmost and Context Gating
 
-- [x] Detect frontmost application bundle identifier
+- [ ] Detect frontmost application bundle identifier
 - [ ] Suppress hover resolution when Finder is not frontmost
 - [ ] Hide preview immediately when Finder loses focus
 - [ ] Re-arm monitoring when Finder becomes frontmost again
@@ -115,7 +115,7 @@ These files and folders are mandatory deliverables for Layer 1:
 
 ## Layer 1F — Finder List View Path Resolution
 
-- [x] Perform AX hit-test at mouse coordinates
+- [ ] Perform AX hit-test at mouse coordinates
 - [ ] Record the raw AX role/subrole/title/value chain for hovered Finder elements into debug logs
 - [ ] Capture and save real Finder list-view AX snapshots into `Tests/Fixtures/FinderAX/`
 - [ ] Identify the actual Finder list row/container roles used on this machine
@@ -155,7 +155,7 @@ These files and folders are mandatory deliverables for Layer 1:
 
 ## Layer 1I — Markdown Rendering
 
-- [x] Add lightweight prototype Markdown-to-HTML renderer
+- [ ] Add lightweight prototype Markdown-to-HTML renderer
 - [ ] Split renderer into block parsing and inline parsing helpers
 - [ ] Render headings correctly
 - [ ] Render paragraphs correctly
@@ -176,8 +176,8 @@ These files and folders are mandatory deliverables for Layer 1:
 
 ## Layer 1J — Preview Panel Behavior
 
-- [x] Add floating panel shell
-- [x] Add cursor-relative placement
+- [ ] Add floating panel shell
+- [ ] Add cursor-relative placement
 - [ ] Clamp preview position to screen visible frame
 - [ ] Clamp preview position across multiple displays
 - [ ] Keep preview size consistent and readable
