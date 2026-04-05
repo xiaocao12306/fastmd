@@ -68,9 +68,20 @@ enum MarkdownRenderer {
                 <span class="eyebrow">FastMD Preview</span>
                 <strong id="doc-title"></strong>
               </div>
-              <div class="toolbar-actions">
-                <span id="width-label" class="width-label">Width</span>
-                <span class="hotkey-label">←/→ 宽度 · Tab 明暗</span>
+              <div class="toolbar-actions" aria-label="Preview controls">
+                <span class="hint-chip">
+                  <span id="width-label" class="hint-item hint-item-width">← 1/4 →</span>
+                  <span class="hint-separator" aria-hidden="true"></span>
+                  <span class="hint-item">
+                    <span class="hint-icon hint-icon-theme" aria-hidden="true"></span>
+                    <span class="hint-text">Tab</span>
+                  </span>
+                  <span class="hint-separator" aria-hidden="true"></span>
+                  <span class="hint-item">
+                    <span class="hint-icon hint-icon-page" aria-hidden="true"></span>
+                    <span class="hint-text">(⇧+) Space</span>
+                  </span>
+                </span>
               </div>
             </header>
             <div id="status-banner" class="status-banner" hidden></div>
@@ -226,32 +237,91 @@ enum MarkdownRenderer {
     .toolbar-actions {
       display: inline-flex;
       align-items: center;
-      gap: 8px;
+      justify-content: flex-end;
       flex-shrink: 0;
+      max-width: min(100%, 420px);
     }
 
-    .width-label {
+    .hint-chip {
       display: inline-flex;
       align-items: center;
-      justify-content: center;
-      min-width: 132px;
-      padding: 0 12px;
-      height: 34px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+      gap: 6px 10px;
+      padding: 7px 11px;
       border-radius: 999px;
       border: 1px solid var(--border);
-      background: var(--surface);
-      color: var(--muted);
-      font-size: 0.78rem;
-      font-weight: 600;
-      transition: background-color 180ms ease, border-color 180ms ease, color 180ms ease;
+      background: color-mix(in srgb, var(--surface) 94%, transparent);
+      transition: background-color 180ms ease, border-color 180ms ease;
     }
 
-    .hotkey-label {
+    .hint-item {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
       color: var(--muted);
       font-size: 0.74rem;
       font-family: var(--font-ui);
       white-space: nowrap;
       transition: color 180ms ease;
+    }
+
+    .hint-item-width {
+      color: var(--text);
+      font-weight: 700;
+      letter-spacing: 0.01em;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .hint-icon {
+      width: 18px;
+      height: 18px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--text);
+      font-size: 0.68rem;
+      line-height: 1;
+      flex-shrink: 0;
+      transition: border-color 180ms ease, color 180ms ease, background-color 180ms ease;
+    }
+
+    .hint-icon-theme::before {
+      content: "◐";
+      transform: translateY(-0.02em);
+    }
+
+    .hint-icon-page::before {
+      content: "⇵";
+      transform: translateY(-0.04em);
+    }
+
+    .hint-text {
+      white-space: nowrap;
+    }
+
+    .hint-separator {
+      width: 4px;
+      height: 4px;
+      border-radius: 999px;
+      background: color-mix(in srgb, var(--muted) 42%, transparent);
+      flex-shrink: 0;
+    }
+
+    @media (max-width: 720px) {
+      .toolbar {
+        align-items: flex-start;
+      }
+
+      .toolbar-actions {
+        max-width: 100%;
+      }
+
+      .hint-chip {
+        justify-content: flex-start;
+      }
     }
 
     .status-banner {
@@ -609,8 +679,10 @@ enum MarkdownRenderer {
         const clampedIndex = Math.max(0, Math.min(state.selectedWidthTierIndex, state.widthTiers.length - 1));
         state.selectedWidthTierIndex = clampedIndex;
         const width = state.widthTiers[clampedIndex] || 0;
-        const label = `${clampedIndex + 1}/${state.widthTiers.length} · ${width}px`;
+        const label = `← ${clampedIndex + 1}/${state.widthTiers.length} →`;
         widthLabel.textContent = label;
+        widthLabel.title = `${clampedIndex + 1}/${state.widthTiers.length} · ${width}px`;
+        widthLabel.setAttribute("aria-label", `宽度档位 ${clampedIndex + 1}/${state.widthTiers.length}，目标宽度 ${width}px`);
       }
 
       function pulseWidthTransition() {

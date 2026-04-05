@@ -29,6 +29,7 @@ These are mandatory Layer 1 requirements and must be treated as non-optional che
 - The inline editor must align left, use about 60 percent of the current preview width, and size its edit box height to match the rendered block height it replaces.
 - Preview placement may stay cursor-biased, but the selected width and height for the current tier have higher priority than keeping the popup's starting corner near the cursor. If the selected size still fits within the current screen, the popup must preserve that size and move position instead of shrinking. If the selected size cannot fit, it must still expand to the largest 4:3 size that can fit on the current screen rather than shrinking to an arbitrarily small fallback.
 - Once the preview is visible it must become the active hot interaction surface so left/right arrows, Tab, mouse wheel scrolling, touchpad scrolling, Space, Shift+Space, Page Up, and Page Down all operate on the preview without requiring the user to chase the hover state.
+- The top-right preview chrome must stay minimal: one compact hint chip only, showing icon-led guidance for left/right width stepping, `Tab`, and `(⇧+) Space`; it must not duplicate the hint in a separate native overlay, keep always-visible pixel-resolution text, or spell out verbose words such as “明暗” and “翻页”.
 - Preview motion must feel smooth: showing, hiding, width-tier switching, and Tab-based background switching must animate rather than snap abruptly.
 - The current motion spec for Layer 1 is: popup entrance about 270ms ease-in-out, popup exit about 210ms ease-in-out, width-tier transitions about 360ms ease-in-out, Markdown-to-Markdown content crossfade using about 210ms fade-out plus 270ms fade-in, and Tab background transitions using short CSS-level color/opacity easing rather than hard snaps.
 - Width-tier switching must animate both the native window frame and a subtle content-surface transition so small-to-medium tier jumps do not read as hard snaps.
@@ -247,6 +248,7 @@ These files and folders are mandatory deliverables for Layer 1:
 - [x] Add a subtle content-surface transition during width-tier changes so adjacent tiers still read as smooth motion
 - [x] Animate Tab-based white/black background switches instead of snapping colors instantly
 - [x] Use approximately 270ms entrance, 210ms exit, and 360ms width-transition timings with ease-in-out easing
+- [x] Collapse the top-right preview chrome into one compact hint chip with icon-led width-tier, `Tab`, and `(⇧+) Space` guidance instead of duplicate overlays, persistent resolution labels, or verbose helper words
 - [ ] Add outside-click dismissal for the preview panel
 - [ ] Keep preview visible while the user moves the cursor within Finder unless a replacement or dismissal condition is met
 - [x] Make the visible preview become the active hot interaction surface without requiring the user to re-hover inside it
@@ -319,6 +321,7 @@ These files and folders are mandatory deliverables for Layer 1:
 - [ ] Run and record test: confirm width-tier changes animate smoothly when using left/right arrows
 - [ ] Run and record test: confirm switching from one hovered Markdown file to another crossfades old content out and new content in
 - [ ] Run and record test: confirm Tab-based background switches animate smoothly rather than snapping
+- [ ] Run and record test: confirm the top-right preview chrome stays collapsed into one compact hint chip without duplicate overlays, persistent pixel-resolution text, or verbose helper words
 - [ ] Run and record test: hover non-markdown file and confirm no preview
 - [ ] Run and record test: move cursor within Finder after preview opens and confirm the preview remains visible until a replacement or dismissal action occurs
 - [ ] Run and record test: click outside the preview and confirm preview closes

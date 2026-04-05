@@ -36,7 +36,9 @@ func markdownRendererEmbedsPreviewChromeAndFeatureScripts() async throws {
 
     #expect(html.contains("FastMD Preview"))
     #expect(html.contains("id=\"width-label\""))
-    #expect(html.contains("←/→ 宽度 · Tab 明暗"))
+    #expect(html.contains("← 1/4 →"))
+    #expect(html.contains("Tab"))
+    #expect(html.contains("(⇧+) Space"))
     #expect(html.contains("window.FastMD"))
     #expect(!html.contains("cdn.jsdelivr.net"))
     #expect(html.contains("window.markdownit"))

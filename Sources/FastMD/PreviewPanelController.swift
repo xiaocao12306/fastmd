@@ -11,9 +11,6 @@ final class PreviewPanelController: NSObject, WKNavigationDelegate {
     private let panel: PreviewPanelWindow
     private let contentContainer = NSView()
     private let webView: WKWebView
-    private let overlayControls = NSView()
-    private let widthLabel = NSTextField(labelWithString: "")
-    private let hotkeyHintLabel = NSTextField(labelWithString: "←/→ 宽度 · Tab 明暗")
     private var currentURL: URL?
     private var currentMarkdown: String?
     private var lastAnchorPoint = NSPoint(x: 0, y: 0)
@@ -68,11 +65,9 @@ final class PreviewPanelController: NSObject, WKNavigationDelegate {
         webView.navigationDelegate = self
         contentController.add(PreviewBridgeScriptHandler(owner: self), name: "previewBridge")
         configureContentContainer()
-        configureOverlayControls()
         installClickMonitors()
         installKeyMonitors()
         installScrollMonitors()
-        syncNativeWidthControls()
     }
 
     func showMarkdown(fileURL: URL, near screenPoint: NSPoint) {
@@ -123,7 +118,6 @@ final class PreviewPanelController: NSObject, WKNavigationDelegate {
         currentMarkdown = nil
         isEditing = false
         interactionHot = false
-        syncNativeWidthControls()
         dismissPanel()
         RuntimeLogger.log("Preview hidden. previousURL=\(previousPath)")
     }
@@ -212,41 +206,6 @@ final class PreviewPanelController: NSObject, WKNavigationDelegate {
         ])
     }
 
-    private func configureOverlayControls() {
-        overlayControls.translatesAutoresizingMaskIntoConstraints = false
-        overlayControls.wantsLayer = true
-        overlayControls.layer?.cornerRadius = 14
-        overlayControls.layer?.masksToBounds = true
-
-        widthLabel.translatesAutoresizingMaskIntoConstraints = false
-        hotkeyHintLabel.translatesAutoresizingMaskIntoConstraints = false
-        widthLabel.alignment = .center
-        widthLabel.font = .systemFont(ofSize: 12, weight: .semibold)
-        hotkeyHintLabel.alignment = .center
-        hotkeyHintLabel.font = .systemFont(ofSize: 11, weight: .regular)
-
-        let stack = NSStackView(views: [widthLabel, hotkeyHintLabel])
-        stack.translatesAutoresizingMaskIntoConstraints = false
-        stack.orientation = .vertical
-        stack.alignment = .centerX
-        stack.spacing = 2
-
-        overlayControls.addSubview(stack)
-        contentContainer.addSubview(overlayControls)
-
-        NSLayoutConstraint.activate([
-            overlayControls.topAnchor.constraint(equalTo: contentContainer.topAnchor, constant: 12),
-            overlayControls.trailingAnchor.constraint(equalTo: contentContainer.trailingAnchor, constant: -14),
-
-            stack.leadingAnchor.constraint(equalTo: overlayControls.leadingAnchor, constant: 10),
-            stack.trailingAnchor.constraint(equalTo: overlayControls.trailingAnchor, constant: -10),
-            stack.topAnchor.constraint(equalTo: overlayControls.topAnchor, constant: 8),
-            stack.bottomAnchor.constraint(equalTo: overlayControls.bottomAnchor, constant: -8),
-
-            widthLabel.widthAnchor.constraint(greaterThanOrEqualToConstant: 140),
-        ])
-    }
-
     private func handlePotentialOutsideClick() {
         guard panel.isVisible else { return }
         guard !isEditing else { return }
@@ -305,7 +264,6 @@ final class PreviewPanelController: NSObject, WKNavigationDelegate {
         let nextIndex = MarkdownRenderer.clampedWidthTierIndex(widthTierIndex + delta)
         guard nextIndex != widthTierIndex else {
             syncWidthTierIntoWebView()
-            syncNativeWidthControls()
             return
         }
 
@@ -317,17 +275,7 @@ final class PreviewPanelController: NSObject, WKNavigationDelegate {
             panel.setFrame(targetFrame, display: false)
         }
         animateWidthTierIntoWebView()
-        syncNativeWidthControls()
         RuntimeLogger.log("Preview width tier changed to index \(widthTierIndex) width=\(MarkdownRenderer.widthTiers[widthTierIndex])")
-    }
-
-    private func syncNativeWidthControls() {
-        widthLabel.stringValue = "\(widthTierIndex + 1)/\(MarkdownRenderer.widthTiers.count) · \(MarkdownRenderer.widthTiers[widthTierIndex])px"
-        hotkeyHintLabel.stringValue = "←/→ 宽度 · Tab 明暗"
-        let isBlack = backgroundMode == .black
-        overlayControls.layer?.backgroundColor = (isBlack ? NSColor(calibratedWhite: 0.08, alpha: 0.92) : NSColor(calibratedWhite: 1.0, alpha: 0.92)).cgColor
-        widthLabel.textColor = isBlack ? .white : .black
-        hotkeyHintLabel.textColor = isBlack ? NSColor(calibratedWhite: 0.82, alpha: 1.0) : NSColor(calibratedWhite: 0.33, alpha: 1.0)
     }
 
     private func syncWidthTierIntoWebView() {
@@ -342,7 +290,6 @@ final class PreviewPanelController: NSObject, WKNavigationDelegate {
 
     private func toggleBackgroundMode() {
         backgroundMode = backgroundMode.opposite
-        syncNativeWidthControls()
         let script = "window.FastMD && window.FastMD.syncBackgroundMode(\"\(backgroundMode.rawValue)\");"
         webView.evaluateJavaScript(script, completionHandler: nil)
         RuntimeLogger.log("Preview background mode changed to \(backgroundMode.rawValue)")
@@ -368,7 +315,6 @@ final class PreviewPanelController: NSObject, WKNavigationDelegate {
             try markdown.write(to: currentURL, atomically: true, encoding: .utf8)
             currentMarkdown = markdown
             isEditing = false
-            syncNativeWidthControls()
             RuntimeLogger.log("Inline block edit saved back to \(currentURL.path)")
             finishJavaScriptSave(success: true, message: nil)
         } catch {
@@ -521,7 +467,6 @@ final class PreviewPanelController: NSObject, WKNavigationDelegate {
         case "editingState":
             let editing = body["editing"] as? Bool ?? false
             isEditing = editing
-            syncNativeWidthControls()
             if editing {
                 panel.makeKeyAndOrderFront(nil)
             }
