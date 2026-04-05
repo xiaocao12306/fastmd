@@ -3,10 +3,18 @@ import Testing
 @testable import FastMD
 
 private func repoRootURL() -> URL {
-    URL(fileURLWithPath: #filePath)
+    var candidate = URL(fileURLWithPath: #filePath)
         .deletingLastPathComponent()
-        .deletingLastPathComponent()
-        .deletingLastPathComponent()
+
+    while candidate.path != "/" {
+        let gitURL = candidate.appendingPathComponent(".git")
+        if FileManager.default.fileExists(atPath: gitURL.path) {
+            return candidate
+        }
+        candidate.deleteLastPathComponent()
+    }
+
+    fatalError("Could not locate repository root from \(#filePath)")
 }
 
 private func loadFixture(at relativePath: String) throws -> String {

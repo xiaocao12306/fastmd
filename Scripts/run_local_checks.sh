@@ -11,6 +11,7 @@ required_paths=(
   "Docs/Test_Logs/README.md"
   "Docs/Screenshots/README.md"
   "Docs/Manual_Test_Plan.md"
+  "apps/macos/Package.swift"
   "Tests/Fixtures/Markdown/basic.md"
   "Tests/Fixtures/Markdown/cjk.md"
   "Tests/Fixtures/Markdown/not-markdown.txt"
@@ -46,17 +47,17 @@ for script in "Scripts/capture_finder_ax_snapshot.swift" "Scripts/generate_xcode
 done
 
 echo "==> swift build"
-swift build
+swift build --package-path apps/macos
 
 echo "==> swift test"
-swift test
+swift test --package-path apps/macos
 
 echo "==> Regenerating Xcode project"
 Scripts/generate_xcodeproj.rb
 
 generated_paths=(
-  "FastMD.xcodeproj/project.pbxproj"
-  "FastMD.xcodeproj/xcshareddata/xcschemes/FastMD.xcscheme"
+  "apps/macos/FastMD.xcodeproj/project.pbxproj"
+  "apps/macos/FastMD.xcodeproj/xcshareddata/xcschemes/FastMD.xcscheme"
 )
 
 echo "==> Verifying generated Xcode project artifacts"
@@ -68,17 +69,17 @@ for path in "${generated_paths[@]}"; do
 done
 
 if ! command -v xcodebuild >/dev/null 2>&1; then
-  echo "xcodebuild is required to validate FastMD.xcodeproj" >&2
+  echo "xcodebuild is required to validate apps/macos/FastMD.xcodeproj" >&2
   exit 1
 fi
 
 echo "==> xcodebuild -list"
-xcodebuild -list -project FastMD.xcodeproj >/dev/null
+xcodebuild -list -project apps/macos/FastMD.xcodeproj >/dev/null
 
 echo "==> xcodebuild build"
-xcodebuild -project FastMD.xcodeproj -scheme FastMD -destination 'platform=macOS,arch=arm64' build >/dev/null
+xcodebuild -project apps/macos/FastMD.xcodeproj -scheme FastMD -destination 'platform=macOS,arch=arm64' build >/dev/null
 
 echo "==> xcodebuild test"
-xcodebuild -project FastMD.xcodeproj -scheme FastMD -destination 'platform=macOS,arch=arm64' test >/dev/null
+xcodebuild -project apps/macos/FastMD.xcodeproj -scheme FastMD -destination 'platform=macOS,arch=arm64' test >/dev/null
 
 echo "==> Local checks completed successfully"

@@ -11,13 +11,15 @@ let package = Package(
     targets: [
         .executableTarget(
             name: "FastMD",
+            path: "Sources/FastMD",
             resources: [
                 .copy("Resources"),
             ]
         ),
         .testTarget(
             name: "FastMDTests",
-            dependencies: ["FastMD"]
+            dependencies: ["FastMD"],
+            path: "Tests/FastMDTests"
         ),
     ],
     swiftLanguageModes: [.v6]

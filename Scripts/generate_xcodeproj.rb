@@ -4,23 +4,27 @@ require 'fileutils'
 require 'pathname'
 require 'xcodeproj'
 
-ROOT = Pathname(__dir__).join('..').expand_path
-PROJECT_PATH = ROOT.join('FastMD.xcodeproj')
+REPO_ROOT = Pathname(__dir__).join('..').expand_path
+MACOS_ROOT = REPO_ROOT.join('apps/macos')
+PROJECT_PATH = MACOS_ROOT.join('FastMD.xcodeproj')
 APP_NAME = 'FastMD'
 TEST_NAME = 'FastMDTests'
 MACOS_DEPLOYMENT_TARGET = '14.0'
 APP_BUNDLE_ID = 'com.wangweiyang.FastMD'
 TEST_BUNDLE_ID = 'com.wangweiyang.FastMDTests'
+MACOS_APP_SOURCE_DIR = 'Sources/FastMD'
+MACOS_APP_RESOURCE_DIR = 'Sources/FastMD/Resources'
+MACOS_TEST_DIR = 'Tests/FastMDTests'
 
 def swift_files(in_relative_dir)
-  ROOT.join(in_relative_dir)
+  MACOS_ROOT.join(in_relative_dir)
       .children
       .select { |path| path.extname == '.swift' }
       .sort_by(&:to_s)
 end
 
 def resource_files(in_relative_dir)
-  Dir.glob(ROOT.join(in_relative_dir, '**', '*').to_s)
+  Dir.glob(MACOS_ROOT.join(in_relative_dir, '**', '*').to_s)
      .map { |path| Pathname(path) }
      .select(&:file?)
      .sort_by(&:to_s)
@@ -88,7 +92,7 @@ end
 
 def add_resource_files_to_target(group, target, files, relative_root)
   references = files.map do |path|
-    relative_path = path.relative_path_from(ROOT.join(relative_root)).to_s
+    relative_path = path.relative_path_from(MACOS_ROOT.join(relative_root)).to_s
     group.new_file(relative_path)
   end
 
@@ -121,9 +125,9 @@ end
 configure_app_target(app_target)
 configure_test_target(test_target)
 
-add_files_to_target(app_group, app_target, swift_files('Sources/FastMD'))
-add_resource_files_to_target(resources_group, app_target, resource_files('Sources/FastMD/Resources'), 'Sources/FastMD/Resources')
-add_files_to_target(test_group, test_target, swift_files('Tests/FastMDTests'))
+add_files_to_target(app_group, app_target, swift_files(MACOS_APP_SOURCE_DIR))
+add_resource_files_to_target(resources_group, app_target, resource_files(MACOS_APP_RESOURCE_DIR), MACOS_APP_RESOURCE_DIR)
+add_files_to_target(test_group, test_target, swift_files(MACOS_TEST_DIR))
 
 project.main_group.sort_recursively_by_type
 project.save
@@ -132,4 +136,4 @@ scheme = Xcodeproj::XCScheme.new
 scheme.configure_with_targets(app_target, test_target, launch_target: true)
 scheme.save_as(PROJECT_PATH, APP_NAME, true)
 
-puts "Generated #{PROJECT_PATH.relative_path_from(ROOT)}"
+puts "Generated #{PROJECT_PATH.relative_path_from(REPO_ROOT)}"

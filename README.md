@@ -75,13 +75,13 @@ This repository currently contains:
 
 ## Run with SwiftPM
 
-Open the package in Xcode or build from Terminal:
+The macOS Swift package now lives under `apps/macos/`. Build it from the repository root like this:
 
 ```bash
 git clone https://github.com/weiyangzen/fastmd.git
 cd fastmd
-swift build
-swift run
+swift build --package-path apps/macos
+swift run --package-path apps/macos
 ```
 
 On first run, grant Accessibility permission when macOS prompts for it.
@@ -99,12 +99,12 @@ When the preview is visible and hot:
 
 ## Run with Xcode
 
-This repository now also includes a checked-in `FastMD.xcodeproj` for macOS app packaging, plus a generator script to keep the project in sync with the `Sources/` and `Tests/` tree.
+This repository now also includes a checked-in macOS project at `apps/macos/FastMD.xcodeproj`, plus a generator script to keep the project in sync with the app-local `Sources/` and `Tests/` tree.
 
 Open the project directly in Xcode:
 
 ```bash
-open FastMD.xcodeproj
+open apps/macos/FastMD.xcodeproj
 ```
 
 Or regenerate it from Terminal:
@@ -116,10 +116,10 @@ Scripts/generate_xcodeproj.rb
 Useful Xcode build commands:
 
 ```bash
-xcodebuild -list -project FastMD.xcodeproj
-xcodebuild -project FastMD.xcodeproj -scheme FastMD -destination 'platform=macOS,arch=arm64' build
-xcodebuild -project FastMD.xcodeproj -scheme FastMD -destination 'platform=macOS,arch=arm64' test
-xcodebuild -project FastMD.xcodeproj -scheme FastMD -destination 'generic/platform=macOS' archive -archivePath build/FastMD.xcarchive
+xcodebuild -list -project apps/macos/FastMD.xcodeproj
+xcodebuild -project apps/macos/FastMD.xcodeproj -scheme FastMD -destination 'platform=macOS,arch=arm64' build
+xcodebuild -project apps/macos/FastMD.xcodeproj -scheme FastMD -destination 'platform=macOS,arch=arm64' test
+xcodebuild -project apps/macos/FastMD.xcodeproj -scheme FastMD -destination 'generic/platform=macOS' archive -archivePath build/FastMD.xcarchive
 ```
 
 The generated archive lands at `build/FastMD.xcarchive`. The project is configured to build and archive locally without requiring immediate code signing setup; signing and notarization can be added later if you want to distribute the app outside local development.

@@ -94,9 +94,9 @@ EOF
 cd "${repo_root}"
 
 echo "==> Building FastMD"
-swift build
+swift build --package-path apps/macos
 
-app_binary="${repo_root}/.build/debug/FastMD"
+app_binary="${repo_root}/apps/macos/.build/debug/FastMD"
 if [[ ! -x "${app_binary}" ]]; then
   echo "Expected app binary not found after build: ${app_binary}" >&2
   exit 1

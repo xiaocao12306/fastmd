@@ -64,7 +64,7 @@ This matrix records the current Layer 1 support boundary for the repository as i
 
 ## Validation Status
 
-- The repository currently contains one automated renderer test in `Tests/FastMDTests/FastMDTests.swift`.
+- The repository currently contains one automated renderer test in `apps/macos/Tests/FastMDTests/FastMDTests.swift`.
 - `swift build` passed on 2026-04-03 for this batch.
 - `swift test` passed on 2026-04-03 for this batch.
 - The repository does not yet contain committed Finder manual test logs, AX snapshots, or screenshot evidence.
