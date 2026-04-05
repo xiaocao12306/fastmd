@@ -1,0 +1,12 @@
+[package]
+name = "fastmd-core"
+edition.workspace = true
+license.workspace = true
+version.workspace = true
+
+[dependencies]
+fastmd-contracts = { path = "../fastmd-contracts" }
+fastmd-render = { path = "../fastmd-render" }
+
+[dev-dependencies]
+serde_json.workspace = true

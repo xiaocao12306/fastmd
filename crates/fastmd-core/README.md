@@ -1,1 +1,1 @@
-Reserved for the shared Rust preview-state machine and product rules.
+Shared Rust preview-state machine and product rules derived from the current macOS Finder behavior.

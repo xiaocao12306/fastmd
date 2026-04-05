@@ -417,69 +417,69 @@ Checklist reset rule:
 ### Layer 0 — Reference Freeze And Repository Boundary
 
 - [ ] Freeze the current macOS app under `apps/macos` as the Stage 2 behavioral reference surface
-- [ ] Record the exact macOS validation commands that must stay green during all Stage 2 work
+- [x] Record the exact macOS validation commands that must stay green during all Stage 2 work
 - [ ] Keep the current macOS Swift package building after every Stage 2 batch
 - [ ] Keep the current macOS Xcode project building after every Stage 2 batch
 - [ ] Keep `Tests/Fixtures/` shared at the repository root for all desktop targets
 - [ ] Keep `apps/macos`, `apps/desktop-tauri`, `crates`, and `ui` as the only active Stage 2 implementation roots
-- [ ] Add root-level ignore rules for Rust, Tauri, frontend, and platform-specific build artifacts
-- [ ] Update root workspace documentation so the repository layout is explicit and stable
+- [x] Add root-level ignore rules for Rust, Tauri, frontend, and platform-specific build artifacts
+- [x] Update root workspace documentation so the repository layout is explicit and stable
 - [ ] Keep `ios` and `android` as reserved placeholders only and out of Stage 2 execution scope
 
 ### Layer 1 — Shared Rust Workspace And Contracts
 
 - [ ] Add a root Cargo workspace that includes `fastmd-contracts`, `fastmd-core`, `fastmd-render`, `fastmd-platform`, `fastmd-platform-macos`, `fastmd-platform-windows`, and `fastmd-platform-linux-nautilus`
 - [ ] Create buildable crate manifests for all Stage 2 Rust crates
-- [ ] Define `PlatformId`
-- [ ] Define `PermissionState`
-- [ ] Define `FrontSurface`
-- [ ] Define `ScreenPoint`
-- [ ] Define `ScreenRect`
-- [ ] Define monitor metadata contracts
-- [ ] Define `HoveredItem`
-- [ ] Define `ResolvedDocument`
-- [ ] Define `LoadedDocument`
-- [ ] Define `HostCapabilities`
-- [ ] Define `PreviewWindowRequest`
-- [ ] Define `PreviewState`
-- [ ] Define sub-state DTOs for hover, preview visibility, paging, editing, and close reasons
-- [ ] Define shared `AppCommand` messages
-- [ ] Define shared `AppEvent` messages
-- [ ] Define a stable Rust error envelope for platform adapters and shell integration
-- [ ] Add serde-based round-trip tests for all shared contracts
+- [x] Define `PlatformId`
+- [x] Define `PermissionState`
+- [x] Define `FrontSurface`
+- [x] Define `ScreenPoint`
+- [x] Define `ScreenRect`
+- [x] Define monitor metadata contracts
+- [x] Define `HoveredItem`
+- [x] Define `ResolvedDocument`
+- [x] Define `LoadedDocument`
+- [x] Define `HostCapabilities`
+- [x] Define `PreviewWindowRequest`
+- [x] Define `PreviewState`
+- [x] Define sub-state DTOs for hover, preview visibility, paging, editing, and close reasons
+- [x] Define shared `AppCommand` messages
+- [x] Define shared `AppEvent` messages
+- [x] Define a stable Rust error envelope for platform adapters and shell integration
+- [x] Add serde-based round-trip tests for all shared contracts
 
 ### Layer 2 — Shared Product Semantics Derived From macOS
 
-- [ ] Encode the 1-second hover trigger rule in the shared core
-- [ ] Encode the “different hovered Markdown file replaces current preview” rule in the shared core
-- [ ] Encode the “same file does not repeatedly reopen while stationary” rule in the shared core
-- [ ] Encode the frontmost-file-manager gating rule in the shared core
-- [ ] Encode the “local `.md` only” acceptance rule in the shared core
-- [ ] Encode the four explicit preview width tiers in the shared core
-- [ ] Encode the 4:3 preview aspect-ratio rule in the shared core
-- [ ] Encode the “reposition before shrinking when the selected tier still fits” rule in the shared core
-- [ ] Encode the pure white / pure black background toggle rule in the shared core
+- [x] Encode the 1-second hover trigger rule in the shared core
+- [x] Encode the “different hovered Markdown file replaces current preview” rule in the shared core
+- [x] Encode the “same file does not repeatedly reopen while stationary” rule in the shared core
+- [x] Encode the frontmost-file-manager gating rule in the shared core
+- [x] Encode the “local `.md` only” acceptance rule in the shared core
+- [x] Encode the four explicit preview width tiers in the shared core
+- [x] Encode the 4:3 preview aspect-ratio rule in the shared core
+- [x] Encode the “reposition before shrinking when the selected tier still fits” rule in the shared core
+- [x] Encode the pure white / pure black background toggle rule in the shared core
 - [ ] Encode the compact top-right hint-chip contract in the shared core
-- [ ] Encode the hot interaction-surface rule in the shared core
-- [ ] Encode mouse-wheel and touchpad scrolling semantics in the shared core
-- [ ] Encode `Space`, `Shift+Space`, `Page Up`, and `Page Down` paging semantics in the shared core
-- [ ] Encode sticky eased paging motion in the shared core
-- [ ] Encode outside-click close semantics in the shared core
-- [ ] Encode app-switch close semantics in the shared core
-- [ ] Encode `Escape` close semantics in the shared core
-- [ ] Encode edit-mode lock semantics in the shared core
-- [ ] Encode “double-click smallest source block to edit” semantics in the shared core
-- [ ] Encode save and cancel edit semantics in the shared core
+- [x] Encode the hot interaction-surface rule in the shared core
+- [x] Encode mouse-wheel and touchpad scrolling semantics in the shared core
+- [x] Encode `Space`, `Shift+Space`, `Page Up`, and `Page Down` paging semantics in the shared core
+- [x] Encode sticky eased paging motion in the shared core
+- [x] Encode outside-click close semantics in the shared core
+- [x] Encode app-switch close semantics in the shared core
+- [x] Encode `Escape` close semantics in the shared core
+- [x] Encode edit-mode lock semantics in the shared core
+- [x] Encode “double-click smallest source block to edit” semantics in the shared core
+- [x] Encode save and cancel edit semantics in the shared core
 - [ ] Add unit tests for all core semantic rules above
 
 ### Layer 3 — Shared Rendering And Editing Contract
 
-- [ ] Define the Stage 2 Markdown rendering contract in `fastmd-render`
-- [ ] Define the block-to-source mapping contract in `fastmd-render`
-- [ ] Define shared theme variables and width-tier constants in `fastmd-render`
-- [ ] Define the compact hint-chip contract in `fastmd-render`
-- [ ] Define preview model DTOs passed into the desktop frontend
-- [ ] Define the inline-editor model passed into the desktop frontend
+- [x] Define the Stage 2 Markdown rendering contract in `fastmd-render`
+- [x] Define the block-to-source mapping contract in `fastmd-render`
+- [x] Define shared theme variables and width-tier constants in `fastmd-render`
+- [x] Define the compact hint-chip contract in `fastmd-render`
+- [x] Define preview model DTOs passed into the desktop frontend
+- [x] Define the inline-editor model passed into the desktop frontend
 - [ ] Encode heading rendering parity
 - [ ] Encode paragraph rendering parity
 - [ ] Encode emphasis and strong rendering parity

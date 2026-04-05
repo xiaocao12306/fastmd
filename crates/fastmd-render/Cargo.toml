@@ -1,0 +1,12 @@
+[package]
+name = "fastmd-render"
+edition.workspace = true
+license.workspace = true
+version.workspace = true
+
+[dependencies]
+fastmd-contracts = { path = "../fastmd-contracts" }
+serde.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true

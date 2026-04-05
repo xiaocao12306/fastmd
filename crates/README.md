@@ -1,1 +1,2 @@
-This directory is reserved for the future Rust workspace used by the Stage 2 cross-platform architecture.
+This directory contains the Stage 2 Rust workspace slices that define shared contracts, shared core semantics,
+shared render contracts, and shared platform traits for cross-platform FastMD.

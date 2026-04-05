@@ -65,6 +65,35 @@ This repository currently contains:
 - rich Markdown preview rendering inside the panel
 - inline block editing that writes Markdown back to the source file
 - runtime diagnostics and Finder AX capture tooling
+- a Stage 2 Rust workspace rooted at `Cargo.toml`
+- shared Rust crates for contracts, core semantics, render contracts, and platform traits under `crates/`
+
+## Stage 2 shared Rust workspace
+
+Stage 2 now has a buildable shared Rust workspace at the repository root for the shared product-semantic layers:
+
+- `crates/fastmd-contracts`
+  Shared DTOs, commands, events, preview state, and host error envelopes.
+- `crates/fastmd-core`
+  Shared hover/open/replace/close/edit/paging semantics derived from the current macOS app.
+- `crates/fastmd-render`
+  Shared width tiers, theme variables, hint-chip contract, render DTOs, and block-mapping contracts.
+- `crates/fastmd-platform`
+  Shared host traits for front-surface detection, preview windows, and document loading/saving.
+
+The platform implementation crates for macOS, Windows, and Ubuntu 24.04 GNOME Files remain separate Stage 2 lanes and are not wired into the root workspace yet.
+
+## Stage 2 validation commands
+
+These are the repository-level commands that should stay green as Stage 2 work lands:
+
+```bash
+cargo check
+cargo test
+swift build --package-path apps/macos
+xcodebuild -project apps/macos/FastMD.xcodeproj -scheme FastMD -destination 'platform=macOS,arch=arm64' build
+xcodebuild -project apps/macos/FastMD.xcodeproj -scheme FastMD -destination 'platform=macOS,arch=arm64' test
+```
 
 ## Known limitations
 

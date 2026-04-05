@@ -1,0 +1,19 @@
+[workspace]
+members = [
+    "crates/fastmd-contracts",
+    "crates/fastmd-core",
+    "crates/fastmd-render",
+    "crates/fastmd-platform",
+]
+resolver = "2"
+
+[workspace.package]
+edition = "2021"
+license = "MIT"
+version = "0.1.0"
+authors = ["FastMD contributors"]
+repository = "https://github.com/weiyangzen/fastmd"
+
+[workspace.dependencies]
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1.0.145"

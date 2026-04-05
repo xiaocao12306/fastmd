@@ -1,0 +1,8 @@
+[package]
+name = "fastmd-platform"
+edition.workspace = true
+license.workspace = true
+version.workspace = true
+
+[dependencies]
+fastmd-contracts = { path = "../fastmd-contracts" }
