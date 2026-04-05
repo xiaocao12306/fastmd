@@ -1,0 +1,27 @@
+#![forbid(unsafe_code)]
+#![deny(missing_debug_implementations)]
+
+//! Windows 11 + Explorer adapter seams for FastMD Stage 2.
+//!
+//! This crate deliberately tracks parity against the current macOS app under
+//! `apps/macos`. It only claims what is implemented here today and keeps the
+//! remaining Windows work behind explicit adapter seams.
+
+pub mod adapter;
+pub mod filter;
+pub mod parity;
+pub mod validation;
+
+pub use adapter::{AdapterError, ExplorerAdapter, FrontmostSurfaceProbe, HostApi, HostCallState};
+pub use filter::{
+    AcceptedMarkdownPath, HoverCandidate, HoverCandidateRejection, HoverCandidateSource,
+    WindowsMarkdownFilter,
+};
+pub use parity::{
+    BackgroundMode, ClosePolicyReference, EditModeReference, InteractionReference,
+    MACOS_REFERENCE_BEHAVIOR, MacOsReferenceBehavior, PreviewGeometryReference,
+    WINDOWS_EXPLORER_STAGE2_TARGET, WindowsExplorerStage2Target,
+};
+pub use validation::{
+    AdapterValidationFeature, AdapterValidationManifest, FeatureStatus, WINDOWS_VALIDATION_FEATURES,
+};

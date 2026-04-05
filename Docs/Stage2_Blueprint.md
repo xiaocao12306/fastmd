@@ -533,8 +533,8 @@ Checklist reset rule:
 
 ### Layer 6 — One-To-One Windows 11 Explorer Parity
 
-- [ ] Restrict Windows support target to Windows 11 plus Explorer only
-- [ ] Create `fastmd-platform-windows` as a buildable crate
+- [x] Restrict Windows support target to Windows 11 plus Explorer only
+- [x] Create `fastmd-platform-windows` as a buildable crate
 - [ ] Implement Windows frontmost Explorer detection with the same gating semantics as macOS Finder
 - [ ] Implement Windows hovered-item resolution so the actual hovered `.md` item is resolved rather than a nearby or first visible candidate
 - [ ] Reject non-Markdown files, directories, and unsupported items with the same semantics as macOS

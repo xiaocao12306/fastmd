@@ -1,0 +1,12 @@
+[package]
+name = "fastmd-platform-windows"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+publish = false
+description = "Windows 11 + Explorer adapter seams for FastMD Stage 2"
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
