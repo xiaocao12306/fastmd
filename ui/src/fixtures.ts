@@ -35,6 +35,7 @@ export const demoBootstrapPayload: BootstrapPayload = {
   },
   hostCapabilities: {
     platformId: "shell",
+    runtimeMode: "fallback",
     accessibilityPermission: "unknown",
     frontmostFileManager: "unknown",
     previewWindowPositioning: false,

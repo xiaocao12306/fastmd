@@ -56,7 +56,7 @@ pub fn crate_slice_validation_notes() -> Vec<ValidationNote> {
         ValidationNote {
             item: "Implement preview opening, rendering, editing, and close behavior parity",
             status: ValidationStatus::BlockedByLowerLayers,
-            note: "Those behaviors depend on shared contracts, shared core, render, and desktop shell layers.",
+            note: "Shared shell parity now covers width tiers, hint-chip chrome, Tab toggle, paged scrolling, and Escape close; hover-driven opening, edit persistence, and host-driven close paths still depend on shared-core and live Nautilus wiring.",
         },
     ]
 }

@@ -29,6 +29,13 @@ impl BackgroundMode {
     }
 }
 
+#[derive(Clone, Copy, Serialize, PartialEq, Eq, Debug)]
+#[serde(rename_all = "camelCase")]
+enum RuntimeMode {
+    Desktop,
+    Fallback,
+}
+
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct ShellStatePayload {
@@ -44,6 +51,7 @@ struct ShellStatePayload {
 #[serde(rename_all = "camelCase")]
 struct HostCapabilitiesPayload {
     platform_id: &'static str,
+    runtime_mode: RuntimeMode,
     accessibility_permission: &'static str,
     frontmost_file_manager: &'static str,
     preview_window_positioning: bool,
@@ -102,6 +110,7 @@ impl ShellBridgeState {
             }),
             host_capabilities: Mutex::new(HostCapabilitiesPayload {
                 platform_id: detected_platform_id(),
+                runtime_mode: RuntimeMode::Desktop,
                 accessibility_permission: "unknown",
                 frontmost_file_manager: "unknown",
                 preview_window_positioning: true,
@@ -453,4 +462,31 @@ fn main() {
         })
         .run(tauri::generate_context!())
         .expect("failed to run the FastMD desktop Tauri shell");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn width_tiers_match_the_macos_reference_values() {
+        assert_eq!(WIDTH_TIERS, [560, 960, 1440, 1920]);
+    }
+
+    #[test]
+    fn tauri_shell_bootstraps_reference_width_tiers() {
+        let shell_state = ShellBridgeState::new();
+
+        assert_eq!(shell_state.snapshot_shell_state().width_tiers, WIDTH_TIERS);
+    }
+
+    #[test]
+    fn tauri_shell_bootstraps_in_desktop_runtime_mode() {
+        let shell_state = ShellBridgeState::new();
+
+        assert_eq!(
+            shell_state.snapshot_host_capabilities().runtime_mode,
+            RuntimeMode::Desktop
+        );
+    }
 }

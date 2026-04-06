@@ -20,6 +20,47 @@ const EDIT_LOCK_MESSAGE = "Edit mode is locked until you save or cancel.";
 const MEMORY_SAVE_MESSAGE =
   "This shell scaffold keeps inline block saves in memory until a real hovered source file is attached.";
 
+export interface PagedScrollPlan {
+  target: number;
+  overshootTarget: number;
+}
+
+export function resolvePagedScrollTargets(
+  start: number,
+  viewportHeight: number,
+  maxScrollTop: number,
+  pages: number,
+): PagedScrollPlan | null {
+  const target = Math.min(
+    maxScrollTop,
+    Math.max(0, start + viewportHeight * PAGE_HEIGHT_FACTOR * pages),
+  );
+  const distance = target - start;
+
+  if (Math.abs(distance) < 1) {
+    return null;
+  }
+
+  const overshootMagnitude = Math.min(
+    OVERSHOOT_DISTANCE_LIMIT,
+    Math.abs(distance) * 0.06,
+  );
+  let overshootTarget = Math.min(
+    maxScrollTop,
+    Math.max(0, target + Math.sign(distance) * overshootMagnitude),
+  );
+
+  if (
+    Math.abs(overshootTarget - target) < 2 ||
+    target <= 0 ||
+    target >= maxScrollTop
+  ) {
+    overshootTarget = target;
+  }
+
+  return { target, overshootTarget };
+}
+
 export class PreviewShellApp {
   private container: HTMLElement;
   private shellState: ShellState;
@@ -240,14 +281,14 @@ export class PreviewShellApp {
   }
 
   private syncCapabilitySummary(): void {
-    const platform =
-      this.hostCapabilities.platformId === "shell"
-        ? "browser shell fallback"
-        : `${this.hostCapabilities.platformId} shell bridge`;
-    const shortcut = this.hostCapabilities.globalShortcutRegistered
-      ? "global re-open shortcut wired"
-      : "global shortcut pending";
-    this.capabilitySummaryNode.textContent = `${platform} · ${shortcut}`;
+    const summary =
+      this.hostCapabilities.runtimeMode === "fallback"
+        ? this.hostCapabilities.globalShortcutRegistered
+          ? "browser shell fallback · global re-open shortcut wired"
+          : "browser shell fallback · global shortcut pending"
+        : "";
+    this.capabilitySummaryNode.textContent = summary;
+    this.capabilitySummaryNode.hidden = summary.length === 0;
   }
 
   private syncWidthChrome(): void {
@@ -284,7 +325,11 @@ export class PreviewShellApp {
       message = EDIT_LOCK_MESSAGE;
     }
 
-    if (!message && !this.hostCapabilities.canPersistPreviewEdits) {
+    if (
+      !message &&
+      this.hostCapabilities.runtimeMode === "fallback" &&
+      !this.hostCapabilities.canPersistPreviewEdits
+    ) {
       message = MEMORY_SAVE_MESSAGE;
     }
 
@@ -416,31 +461,17 @@ export class PreviewShellApp {
     this.cancelScrollAnimation();
 
     const start = this.currentScrollTop();
-    const delta = window.innerHeight * PAGE_HEIGHT_FACTOR * pages;
-    const target = this.clamp(start + delta, 0, this.maxScrollTop());
-    const distance = target - start;
+    const plan = resolvePagedScrollTargets(
+      start,
+      window.innerHeight,
+      this.maxScrollTop(),
+      pages,
+    );
 
-    if (Math.abs(distance) < 1) {
+    if (!plan) {
       return;
     }
-
-    const overshootMagnitude = Math.min(
-      OVERSHOOT_DISTANCE_LIMIT,
-      Math.abs(distance) * 0.06,
-    );
-    let overshootTarget = this.clamp(
-      target + Math.sign(distance) * overshootMagnitude,
-      0,
-      this.maxScrollTop(),
-    );
-
-    if (
-      Math.abs(overshootTarget - target) < 2 ||
-      target <= 0 ||
-      target >= this.maxScrollTop()
-    ) {
-      overshootTarget = target;
-    }
+    const { target, overshootTarget } = plan;
 
     this.animateScrollSegment(start, overshootTarget, 520, this.easeOutQuint.bind(this), () => {
       if (overshootTarget === target) {

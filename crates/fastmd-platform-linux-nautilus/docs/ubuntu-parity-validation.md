@@ -33,6 +33,12 @@ Not yet proven in this slice:
 - live Ubuntu 24.04 GNOME Files probing on a real X11 session
 - end-to-end parity with macOS preview opening, paging, rendering, editing, and close behavior
 
+Shared shell parity now covered outside this crate:
+
+- the shared preview shell keeps the same four width tiers as the macOS reference
+- the compact hint chip and desktop chrome copy now match the macOS shell instead of showing Linux-only helper text
+- `Tab`, paged scrolling, and `Escape` close semantics are validated in the shared Tauri/UI lane
+
 ## Layer-Gate Reminder
 
 The Stage 2 blueprint says Layer 7 cannot claim full parity until Layers 1 through 4 are in place. This crate therefore limits itself to adapter-boundary work and explicit validation notes instead of claiming product completion early.
