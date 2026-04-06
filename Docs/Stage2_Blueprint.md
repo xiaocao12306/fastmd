@@ -506,7 +506,7 @@ Checklist reset rule:
 - [x] Implement width-tier UI state in the shared frontend
 - [x] Implement background-mode UI state in the shared frontend
 - [x] Implement inline block editing UI in the shared frontend
-- [ ] Implement the command/event bridge between Tauri and the Rust core
+- [x] Implement the command/event bridge between Tauri and the Rust core
 - [x] Integrate Tauri window positioning behavior needed for the preview window
 - [x] Integrate Tauri global shortcut support needed by the shared desktop shell
 - [x] Expose host capability state to the shared frontend
