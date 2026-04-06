@@ -19,17 +19,19 @@ pub use filter::{
     WindowsMarkdownFilter,
 };
 pub use frontmost::{
-    EXPLORER_WINDOW_CLASSES, FrontmostSurfaceRejection, FrontmostWindowSnapshot,
-    WINDOWS_FRONTMOST_API_STACK, WindowsFrontmostApi, WindowsFrontmostApiStack,
-    resolve_frontmost_surface,
+    resolve_frontmost_surface, FrontmostSurfaceRejection, FrontmostWindowSnapshot,
+    WindowsFrontmostApi, WindowsFrontmostApiStack, EXPLORER_WINDOW_CLASSES,
+    WINDOWS_FRONTMOST_API_STACK,
 };
 pub use parity::{
     BackgroundMode, BackgroundToggleKey, BackgroundToggleReference, ClosePolicyReference,
     CoordinateSpaceReference, EditEntryReference, EditModeReference, FrontmostFileManagerReference,
-    HintChipReference, HoverResolutionReference, InteractionReference, MACOS_REFERENCE_BEHAVIOR,
-    MacOsReferenceBehavior, MultiMonitorReference, PagingReference, PlacementBoundsReference,
-    PreviewGeometryReference, WINDOWS_EXPLORER_FRONTMOST_REFERENCE, WINDOWS_EXPLORER_STAGE2_TARGET,
-    WindowsExplorerStage2Target,
+    HintChipReference, HoverResolutionReference, InteractionReference, MacOsReferenceBehavior,
+    MathDelimiterReference, MultiMonitorReference, PagingReference, PlacementBoundsReference,
+    PreviewGeometryReference, RenderingChromeReference, RenderingLayoutReference,
+    RenderingReference, RenderingRuntimeReference, RenderingThemeReference,
+    RenderingTypographyReference, WindowsExplorerStage2Target, MACOS_REFERENCE_BEHAVIOR,
+    WINDOWS_EXPLORER_FRONTMOST_REFERENCE, WINDOWS_EXPLORER_STAGE2_TARGET,
 };
 pub use validation::{
     AdapterValidationFeature, AdapterValidationManifest, FeatureStatus, WINDOWS_VALIDATION_FEATURES,

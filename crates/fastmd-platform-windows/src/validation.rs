@@ -76,7 +76,7 @@ pub static WINDOWS_VALIDATION_FEATURES: [AdapterValidationFeature; 11] = [
     AdapterValidationFeature {
         blueprint_item: "Implement width tiers, background toggle, paging, editing, and close semantics through shared contracts/core",
         status: FeatureStatus::PendingAdapterWork,
-        evidence: "Shared contracts/core now encode the macOS reference semantics and explicitly test edit-mode lock plus close-policy parity against the macOS reference; Windows host wiring still needs to drive those rules end-to-end.",
+        evidence: "Shared contracts/core now encode the macOS interaction semantics, and shared rendering references now lock the current macOS preview chrome, runtime Markdown features, theme palette, and inline-editor copy; Windows host wiring still needs to drive that surface end-to-end.",
     },
 ];
 
@@ -90,7 +90,7 @@ pub fn windows_validation_manifest() -> AdapterValidationManifest {
 
 #[cfg(test)]
 mod tests {
-    use super::{FeatureStatus, windows_validation_manifest};
+    use super::{windows_validation_manifest, FeatureStatus};
 
     #[test]
     fn validation_manifest_stays_explicit_about_target_and_reference() {
@@ -111,17 +111,13 @@ mod tests {
             .count();
 
         assert_eq!(implemented, 4);
-        assert!(
-            manifest
-                .features
-                .iter()
-                .any(|feature| feature.status == FeatureStatus::PendingAdapterWork)
-        );
-        assert!(
-            manifest
-                .features
-                .iter()
-                .all(|feature| feature.status != FeatureStatus::PendingSharedCore)
-        );
+        assert!(manifest
+            .features
+            .iter()
+            .any(|feature| feature.status == FeatureStatus::PendingAdapterWork));
+        assert!(manifest
+            .features
+            .iter()
+            .all(|feature| feature.status != FeatureStatus::PendingSharedCore));
     }
 }

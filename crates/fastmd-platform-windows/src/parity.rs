@@ -1,9 +1,11 @@
 pub use fastmd_contracts::{
     BackgroundMode, BackgroundToggleKey, BackgroundToggleReference, ClosePolicyReference,
     CoordinateSpaceReference, EditEntryReference, EditModeReference, FrontmostFileManagerReference,
-    HintChipReference, HoverResolutionReference, InteractionReference, MACOS_REFERENCE_BEHAVIOR,
-    MacOsReferenceBehavior, MultiMonitorReference, PagingReference, PlacementBoundsReference,
-    PreviewGeometryReference, WINDOWS_EXPLORER_FRONTMOST_REFERENCE,
+    HintChipReference, HoverResolutionReference, InteractionReference, MacOsReferenceBehavior,
+    MathDelimiterReference, MultiMonitorReference, PagingReference, PlacementBoundsReference,
+    PreviewGeometryReference, RenderingChromeReference, RenderingLayoutReference,
+    RenderingReference, RenderingRuntimeReference, RenderingThemeReference,
+    RenderingTypographyReference, MACOS_REFERENCE_BEHAVIOR, WINDOWS_EXPLORER_FRONTMOST_REFERENCE,
 };
 
 /// Stage 2 Windows target locked by this lane.
@@ -25,7 +27,7 @@ pub static WINDOWS_EXPLORER_STAGE2_TARGET: WindowsExplorerStage2Target =
 mod tests {
     use super::{
         BackgroundMode, BackgroundToggleKey, CoordinateSpaceReference, EditEntryReference,
-        MACOS_REFERENCE_BEHAVIOR, PlacementBoundsReference, WINDOWS_EXPLORER_FRONTMOST_REFERENCE,
+        PlacementBoundsReference, MACOS_REFERENCE_BEHAVIOR, WINDOWS_EXPLORER_FRONTMOST_REFERENCE,
         WINDOWS_EXPLORER_STAGE2_TARGET,
     };
 
@@ -86,6 +88,24 @@ mod tests {
         assert_eq!(
             MACOS_REFERENCE_BEHAVIOR.hint_chip.width_label(2, 4),
             "← 3/4 →"
+        );
+        assert_eq!(
+            MACOS_REFERENCE_BEHAVIOR.rendering.chrome.toolbar_eyebrow,
+            "FastMD Preview"
+        );
+        assert_eq!(
+            MACOS_REFERENCE_BEHAVIOR
+                .rendering
+                .runtime
+                .mermaid_fence_info_string,
+            "mermaid"
+        );
+        assert_eq!(
+            MACOS_REFERENCE_BEHAVIOR
+                .rendering
+                .chrome
+                .width_tooltip(1, 4, 960),
+            "2/4 · 960px"
         );
     }
 }

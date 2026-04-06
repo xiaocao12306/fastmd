@@ -525,7 +525,7 @@ Checklist reset rule:
 - [x] Mirror the current scrolling and paging behavior in the shared contracts
 - [x] Mirror the current inline block editing behavior in the shared contracts
 - [x] Mirror the current compact hint-chip behavior in the shared contracts
-- [ ] Preserve the current macOS rendering behavior while introducing shared-core wiring
+- [x] Preserve the current macOS rendering behavior while introducing shared-core wiring
 - [x] Preserve the current macOS edit-mode lock behavior while introducing shared-core wiring
 - [x] Preserve the current macOS close behavior while introducing shared-core wiring
 - [x] Add explicit parity tests or validation evidence that macOS behavior did not regress

@@ -384,6 +384,118 @@ impl HintChipReference {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct MathDelimiterReference {
+    pub left: &'static str,
+    pub right: &'static str,
+    pub display: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RenderingRuntimeReference {
+    pub html_enabled: bool,
+    pub linkify: bool,
+    pub typographer: bool,
+    pub syntax_highlight_uses_highlight_js: bool,
+    pub syntax_highlight_falls_back_to_auto_detect: bool,
+    pub supports_footnotes: bool,
+    pub supports_task_lists: bool,
+    pub task_list_wraps_label: bool,
+    pub task_list_wraps_label_after_checkbox: bool,
+    pub supports_mermaid: bool,
+    pub mermaid_fence_info_string: &'static str,
+    pub mermaid_security_level: &'static str,
+    pub supports_math: bool,
+    pub math_delimiters: [MathDelimiterReference; 4],
+    pub html_blocks_passthrough: bool,
+    pub wraps_top_level_blocks_with_source_mapping: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RenderingTypographyReference {
+    pub ui_font_family: &'static str,
+    pub body_font_family: &'static str,
+    pub code_font_family: &'static str,
+    pub base_font_size_px: u16,
+    pub heading_sizes_px: [u16; 6],
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RenderingThemeReference {
+    pub white_page_bg: &'static str,
+    pub black_page_bg: &'static str,
+    pub white_text: &'static str,
+    pub black_text: &'static str,
+    pub white_code_bg: &'static str,
+    pub black_code_bg: &'static str,
+    pub white_editor_bg: &'static str,
+    pub black_editor_bg: &'static str,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RenderingChromeReference {
+    pub toolbar_eyebrow: &'static str,
+    pub width_tooltip_template: &'static str,
+    pub width_aria_label_template: &'static str,
+    pub edit_locked_status_text: &'static str,
+    pub saving_status_text: &'static str,
+    pub save_failed_fallback_text: &'static str,
+    pub inline_editor_source_line_template: &'static str,
+    pub inline_editor_return_text: &'static str,
+    pub save_label: &'static str,
+    pub cancel_label: &'static str,
+}
+
+impl RenderingChromeReference {
+    pub fn width_tooltip(
+        self,
+        selected_width_tier_index: usize,
+        total_tiers: usize,
+        width_px: u32,
+    ) -> String {
+        self.width_tooltip_template
+            .replace("{current}", &(selected_width_tier_index + 1).to_string())
+            .replace("{total}", &total_tiers.to_string())
+            .replace("{width}", &width_px.to_string())
+    }
+
+    pub fn width_aria_label(
+        self,
+        selected_width_tier_index: usize,
+        total_tiers: usize,
+        width_px: u32,
+    ) -> String {
+        self.width_aria_label_template
+            .replace("{current}", &(selected_width_tier_index + 1).to_string())
+            .replace("{total}", &total_tiers.to_string())
+            .replace("{width}", &width_px.to_string())
+    }
+
+    pub fn inline_editor_source_line_label(self, start_line: u32, end_line: u32) -> String {
+        self.inline_editor_source_line_template
+            .replace("{start}", &(start_line + 1).to_string())
+            .replace("{end}", &end_line.to_string())
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RenderingLayoutReference {
+    pub render_root_padding_px: u16,
+    pub toolbar_padding_top_px: u16,
+    pub toolbar_padding_horizontal_px: u16,
+    pub toolbar_padding_bottom_px: u16,
+    pub inline_editor_width_percent: u8,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RenderingReference {
+    pub runtime: RenderingRuntimeReference,
+    pub typography: RenderingTypographyReference,
+    pub theme: RenderingThemeReference,
+    pub chrome: RenderingChromeReference,
+    pub layout: RenderingLayoutReference,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct MacOsReferenceBehavior {
     pub reference_surface: &'static str,
@@ -398,6 +510,7 @@ pub struct MacOsReferenceBehavior {
     pub edit_mode: EditModeReference,
     pub close_policy: ClosePolicyReference,
     pub hint_chip: HintChipReference,
+    pub rendering: RenderingReference,
 }
 
 pub static MACOS_REFERENCE_BEHAVIOR: MacOsReferenceBehavior = MacOsReferenceBehavior {
@@ -483,6 +596,83 @@ pub static MACOS_REFERENCE_BEHAVIOR: MacOsReferenceBehavior = MacOsReferenceBeha
         paging_label: "(⇧+) Space",
         background_icon: "◐",
         paging_icon: "⇵",
+    },
+    rendering: RenderingReference {
+        runtime: RenderingRuntimeReference {
+            html_enabled: true,
+            linkify: true,
+            typographer: true,
+            syntax_highlight_uses_highlight_js: true,
+            syntax_highlight_falls_back_to_auto_detect: true,
+            supports_footnotes: true,
+            supports_task_lists: true,
+            task_list_wraps_label: true,
+            task_list_wraps_label_after_checkbox: true,
+            supports_mermaid: true,
+            mermaid_fence_info_string: "mermaid",
+            mermaid_security_level: "loose",
+            supports_math: true,
+            math_delimiters: [
+                MathDelimiterReference {
+                    left: "$$",
+                    right: "$$",
+                    display: true,
+                },
+                MathDelimiterReference {
+                    left: "\\[",
+                    right: "\\]",
+                    display: true,
+                },
+                MathDelimiterReference {
+                    left: "$",
+                    right: "$",
+                    display: false,
+                },
+                MathDelimiterReference {
+                    left: "\\(",
+                    right: "\\)",
+                    display: false,
+                },
+            ],
+            html_blocks_passthrough: true,
+            wraps_top_level_blocks_with_source_mapping: true,
+        },
+        typography: RenderingTypographyReference {
+            ui_font_family: "\"SF Pro Text\", \"Helvetica Neue\", system-ui, sans-serif",
+            body_font_family: "\"Charter\", \"Iowan Old Style\", Georgia, serif",
+            code_font_family: "\"SF Mono\", \"Menlo\", \"Monaco\", monospace",
+            base_font_size_px: 14,
+            heading_sizes_px: [25, 21, 18, 16, 15, 12],
+        },
+        theme: RenderingThemeReference {
+            white_page_bg: "#ffffff",
+            black_page_bg: "#000000",
+            white_text: "#111111",
+            black_text: "#f5f5f5",
+            white_code_bg: "#f5f7fb",
+            black_code_bg: "#0f0f10",
+            white_editor_bg: "#fffdf8",
+            black_editor_bg: "#121212",
+        },
+        chrome: RenderingChromeReference {
+            toolbar_eyebrow: "FastMD Preview",
+            width_tooltip_template: "{current}/{total} · {width}px",
+            width_aria_label_template: "宽度档位 {current}/{total}，目标宽度 {width}px",
+            edit_locked_status_text: "Edit mode is locked until you save or cancel.",
+            saving_status_text: "Saving Markdown block back to disk…",
+            save_failed_fallback_text: "Save failed.",
+            inline_editor_source_line_template: "Editing source lines {start}-{end}",
+            inline_editor_return_text: "Double-clicked block returns to raw Markdown.",
+            save_label: "Save",
+            cancel_label: "Cancel",
+        },
+        layout: RenderingLayoutReference {
+            render_root_padding_px: 18,
+            toolbar_padding_top_px: 14,
+            toolbar_padding_horizontal_px: 18,
+            toolbar_padding_bottom_px: 12,
+            inline_editor_width_percent: 60,
+        },
     },
 };
 
