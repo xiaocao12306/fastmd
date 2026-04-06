@@ -24,7 +24,7 @@ This validation file is crate-local evidence only. It does not claim full Window
 - frontmost Explorer detection
 - Explorer hovered-item resolution
 - coordinate translation and placement parity
-- preview interaction parity wiring
+- preview interaction parity wiring; the shared edit-lock and close-policy rules are now validated in `fastmd-core`, but Explorer/Tauri wiring is still pending
 - runtime diagnostics parity
 
 ## Verification commands

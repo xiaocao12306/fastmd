@@ -4,10 +4,10 @@ use crate::filter::{
     AcceptedMarkdownPath, HoverCandidate, HoverCandidateRejection, WindowsMarkdownFilter,
 };
 use crate::parity::{
-    MacOsReferenceBehavior, WindowsExplorerStage2Target, MACOS_REFERENCE_BEHAVIOR,
-    WINDOWS_EXPLORER_STAGE2_TARGET,
+    MACOS_REFERENCE_BEHAVIOR, MacOsReferenceBehavior, WINDOWS_EXPLORER_STAGE2_TARGET,
+    WindowsExplorerStage2Target,
 };
-use crate::validation::{windows_validation_manifest, AdapterValidationManifest};
+use crate::validation::{AdapterValidationManifest, windows_validation_manifest};
 
 /// Windows host API seams that still need real Explorer-backed implementations.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

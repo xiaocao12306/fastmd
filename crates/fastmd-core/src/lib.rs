@@ -826,6 +826,153 @@ mod tests {
     }
 
     #[test]
+    fn macos_reference_edit_mode_lock_blocks_replacement_and_dismissal_until_unlocked() {
+        let mut engine = CoreEngine::new();
+
+        assert!(MACOS_REFERENCE_BEHAVIOR
+            .edit_mode
+            .blocks_preview_replacement());
+        assert!(MACOS_REFERENCE_BEHAVIOR
+            .edit_mode
+            .blocks_preview_dismissal());
+
+        engine.observe_hover(
+            0,
+            finder_surface(true),
+            Some(hovered_markdown("/Users/example/Docs/a.md", 180.0, 780.0)),
+            Some(monitor()),
+        );
+        engine.observe_hover(
+            1_000,
+            finder_surface(true),
+            Some(hovered_markdown("/Users/example/Docs/a.md", 180.0, 780.0)),
+            None,
+        );
+
+        let edit_events = engine.begin_edit_at_line(4, &block_mappings());
+        assert_eq!(edit_events.len(), 1);
+        assert_eq!(engine.state().editing.phase, EditingPhase::Active);
+
+        let replacement_attempt = engine.observe_hover(
+            4_000,
+            finder_surface(true),
+            Some(hovered_markdown("/Users/example/Docs/b.md", 220.0, 740.0)),
+            None,
+        );
+        assert!(replacement_attempt.is_empty());
+        assert_eq!(
+            engine
+                .state()
+                .current_document
+                .as_ref()
+                .map(|document| document.display_name.as_str()),
+            Some("a.md")
+        );
+
+        assert!(engine.outside_click().is_empty());
+        assert!(engine
+            .front_surface_changed(finder_surface(false))
+            .is_empty());
+        assert!(engine.escape_pressed().is_empty());
+        assert!(engine.state().visibility.visible);
+
+        let cancel_events = engine.cancel_edit();
+        assert_eq!(cancel_events.len(), 1);
+        assert_eq!(engine.state().editing.phase, EditingPhase::Inactive);
+
+        assert_eq!(
+            engine.escape_pressed(),
+            vec![AppEvent::PreviewWindowHidden {
+                reason: CloseReason::Escape,
+            }]
+        );
+    }
+
+    #[test]
+    fn macos_reference_close_policy_matches_preview_panel_behavior_when_not_editing() {
+        let mut engine = CoreEngine::new();
+
+        assert!(MACOS_REFERENCE_BEHAVIOR
+            .close_policy
+            .allows_non_forced_close(CloseReason::OutsideClick));
+        assert!(MACOS_REFERENCE_BEHAVIOR
+            .close_policy
+            .allows_non_forced_close(CloseReason::AppSwitch));
+        assert!(MACOS_REFERENCE_BEHAVIOR
+            .close_policy
+            .allows_non_forced_close(CloseReason::Escape));
+
+        engine.observe_hover(
+            0,
+            finder_surface(true),
+            Some(hovered_markdown("/Users/example/Docs/a.md", 180.0, 780.0)),
+            Some(monitor()),
+        );
+        engine.observe_hover(
+            1_000,
+            finder_surface(true),
+            Some(hovered_markdown("/Users/example/Docs/a.md", 180.0, 780.0)),
+            None,
+        );
+
+        assert_eq!(
+            engine.outside_click(),
+            vec![AppEvent::PreviewWindowHidden {
+                reason: CloseReason::OutsideClick,
+            }]
+        );
+        assert_eq!(
+            engine.state().last_close_reason,
+            Some(CloseReason::OutsideClick)
+        );
+
+        engine.observe_hover(
+            2_000,
+            finder_surface(true),
+            Some(hovered_markdown("/Users/example/Docs/a.md", 180.0, 780.0)),
+            Some(monitor()),
+        );
+        engine.observe_hover(
+            3_000,
+            finder_surface(true),
+            Some(hovered_markdown("/Users/example/Docs/a.md", 180.0, 780.0)),
+            None,
+        );
+
+        assert_eq!(
+            engine.front_surface_changed(finder_surface(false)),
+            vec![AppEvent::PreviewWindowHidden {
+                reason: CloseReason::AppSwitch,
+            }]
+        );
+        assert_eq!(
+            engine.state().last_close_reason,
+            Some(CloseReason::AppSwitch)
+        );
+
+        engine.observe_hover(
+            4_000,
+            finder_surface(true),
+            Some(hovered_markdown("/Users/example/Docs/a.md", 180.0, 780.0)),
+            Some(monitor()),
+        );
+        engine.observe_hover(
+            5_000,
+            finder_surface(true),
+            Some(hovered_markdown("/Users/example/Docs/a.md", 180.0, 780.0)),
+            None,
+        );
+
+        assert_eq!(
+            engine.escape_pressed(),
+            vec![AppEvent::PreviewWindowHidden {
+                reason: CloseReason::Escape,
+            }]
+        );
+        assert_eq!(engine.state().last_close_reason, Some(CloseReason::Escape));
+    }
+
+    #[test]
     fn close_policies_follow_outside_click_app_switch_and_escape_unless_edit_locked() {
         let mut engine = CoreEngine::new();
 

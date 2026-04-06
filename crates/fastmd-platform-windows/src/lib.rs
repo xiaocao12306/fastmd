@@ -20,9 +20,9 @@ pub use filter::{
 pub use parity::{
     BackgroundMode, BackgroundToggleKey, BackgroundToggleReference, ClosePolicyReference,
     CoordinateSpaceReference, EditEntryReference, EditModeReference, FrontmostFileManagerReference,
-    HintChipReference, HoverResolutionReference, InteractionReference, MacOsReferenceBehavior,
-    MultiMonitorReference, PagingReference, PlacementBoundsReference, PreviewGeometryReference,
-    WindowsExplorerStage2Target, MACOS_REFERENCE_BEHAVIOR, WINDOWS_EXPLORER_STAGE2_TARGET,
+    HintChipReference, HoverResolutionReference, InteractionReference, MACOS_REFERENCE_BEHAVIOR,
+    MacOsReferenceBehavior, MultiMonitorReference, PagingReference, PlacementBoundsReference,
+    PreviewGeometryReference, WINDOWS_EXPLORER_STAGE2_TARGET, WindowsExplorerStage2Target,
 };
 pub use validation::{
     AdapterValidationFeature, AdapterValidationManifest, FeatureStatus, WINDOWS_VALIDATION_FEATURES,

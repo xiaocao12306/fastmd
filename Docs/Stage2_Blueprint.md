@@ -526,9 +526,9 @@ Checklist reset rule:
 - [x] Mirror the current inline block editing behavior in the shared contracts
 - [x] Mirror the current compact hint-chip behavior in the shared contracts
 - [ ] Preserve the current macOS rendering behavior while introducing shared-core wiring
-- [ ] Preserve the current macOS edit-mode lock behavior while introducing shared-core wiring
-- [ ] Preserve the current macOS close behavior while introducing shared-core wiring
-- [ ] Add explicit parity tests or validation evidence that macOS behavior did not regress
+- [x] Preserve the current macOS edit-mode lock behavior while introducing shared-core wiring
+- [x] Preserve the current macOS close behavior while introducing shared-core wiring
+- [x] Add explicit parity tests or validation evidence that macOS behavior did not regress
 - [ ] Keep the Swift shell or Tauri-backed macOS shell behaviorally identical to the current app until a later blueprint change explicitly says otherwise
 
 ### Layer 6 — One-To-One Windows 11 Explorer Parity

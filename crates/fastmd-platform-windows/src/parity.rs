@@ -1,9 +1,9 @@
 pub use fastmd_contracts::{
     BackgroundMode, BackgroundToggleKey, BackgroundToggleReference, ClosePolicyReference,
     CoordinateSpaceReference, EditEntryReference, EditModeReference, FrontmostFileManagerReference,
-    HintChipReference, HoverResolutionReference, InteractionReference, MacOsReferenceBehavior,
-    MultiMonitorReference, PagingReference, PlacementBoundsReference, PreviewGeometryReference,
-    MACOS_REFERENCE_BEHAVIOR,
+    HintChipReference, HoverResolutionReference, InteractionReference, MACOS_REFERENCE_BEHAVIOR,
+    MacOsReferenceBehavior, MultiMonitorReference, PagingReference, PlacementBoundsReference,
+    PreviewGeometryReference,
 };
 
 /// Stage 2 Windows target locked by this lane.
@@ -25,7 +25,7 @@ pub static WINDOWS_EXPLORER_STAGE2_TARGET: WindowsExplorerStage2Target =
 mod tests {
     use super::{
         BackgroundMode, BackgroundToggleKey, CoordinateSpaceReference, EditEntryReference,
-        PlacementBoundsReference, MACOS_REFERENCE_BEHAVIOR, WINDOWS_EXPLORER_STAGE2_TARGET,
+        MACOS_REFERENCE_BEHAVIOR, PlacementBoundsReference, WINDOWS_EXPLORER_STAGE2_TARGET,
     };
 
     #[test]

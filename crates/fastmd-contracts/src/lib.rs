@@ -329,12 +329,41 @@ pub struct EditModeReference {
     pub cancel_preserves_source: bool,
 }
 
+impl EditModeReference {
+    pub fn blocks_preview_replacement(self) -> bool {
+        self.locks_preview_replacement_until_save_or_cancel
+    }
+
+    pub fn blocks_preview_dismissal(self) -> bool {
+        self.locks_preview_dismissal_until_save_or_cancel
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ClosePolicyReference {
     pub outside_click_closes_when_not_editing: bool,
     pub app_switch_closes_when_not_editing: bool,
     pub escape_closes_when_not_editing: bool,
     pub editing_blocks_non_forced_close: bool,
+}
+
+impl ClosePolicyReference {
+    pub fn allows_non_forced_close(self, reason: CloseReason) -> bool {
+        match reason {
+            CloseReason::OutsideClick => self.outside_click_closes_when_not_editing,
+            CloseReason::AppSwitch => self.app_switch_closes_when_not_editing,
+            CloseReason::Escape => self.escape_closes_when_not_editing,
+            CloseReason::ForceStop | CloseReason::FrontSurfaceLost => false,
+        }
+    }
+
+    pub fn allows_non_forced_close_while_editing(self, reason: CloseReason) -> bool {
+        if self.editing_blocks_non_forced_close {
+            false
+        } else {
+            self.allows_non_forced_close(reason)
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -920,6 +949,26 @@ mod tests {
             reference.edit_mode.entry,
             EditEntryReference::DoubleClickSmallestMatchingBlock
         );
+        assert!(reference.edit_mode.blocks_preview_replacement());
+        assert!(reference.edit_mode.blocks_preview_dismissal());
+        assert!(reference
+            .close_policy
+            .allows_non_forced_close(CloseReason::OutsideClick));
+        assert!(reference
+            .close_policy
+            .allows_non_forced_close(CloseReason::AppSwitch));
+        assert!(reference
+            .close_policy
+            .allows_non_forced_close(CloseReason::Escape));
+        assert!(!reference
+            .close_policy
+            .allows_non_forced_close_while_editing(CloseReason::OutsideClick));
+        assert!(!reference
+            .close_policy
+            .allows_non_forced_close_while_editing(CloseReason::AppSwitch));
+        assert!(!reference
+            .close_policy
+            .allows_non_forced_close_while_editing(CloseReason::Escape));
         assert!(reference.hint_chip.collapsed_into_single_chip);
         assert_eq!(reference.hint_chip.background_label, "Tab");
         assert_eq!(reference.hint_chip.paging_label, "(⇧+) Space");
