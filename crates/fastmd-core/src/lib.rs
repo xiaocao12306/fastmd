@@ -497,6 +497,19 @@ mod tests {
         }
     }
 
+    fn hovered_relative_markdown() -> HoveredItem {
+        HoveredItem {
+            document: ResolvedDocument::new(
+                "spec.md",
+                "spec.md",
+                DocumentOrigin::LocalFileSystem,
+                DocumentKind::File,
+            ),
+            screen_point: ScreenPoint::new(240.0, 620.0),
+            element_description: "Finder row subtree direct path".to_string(),
+        }
+    }
+
     fn block_mappings() -> Vec<BlockMapping> {
         vec![
             BlockMapping {
@@ -667,6 +680,14 @@ mod tests {
                 0,
                 finder_surface(true, "finder-window-1"),
                 Some(hovered_directory()),
+                Some(monitor())
+            )
+            .is_empty());
+        assert!(engine
+            .observe_hover(
+                0,
+                finder_surface(true, "finder-window-1"),
+                Some(hovered_relative_markdown()),
                 Some(monitor())
             )
             .is_empty());

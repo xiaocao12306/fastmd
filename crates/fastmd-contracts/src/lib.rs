@@ -52,6 +52,24 @@ pub enum DocumentKind {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
+pub enum HoverResolutionScope {
+    ExactItemUnderPointer,
+    HoveredRowDescendant,
+    NearbyCandidate,
+    FirstVisibleItem,
+}
+
+impl HoverResolutionScope {
+    pub fn supports_macos_parity(self) -> bool {
+        matches!(
+            self,
+            Self::ExactItemUnderPointer | Self::HoveredRowDescendant
+        )
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
 pub enum BackgroundMode {
     White,
     Black,
@@ -151,6 +169,10 @@ impl DocumentPath {
             .and_then(|ext| ext.to_str())
     }
 
+    pub fn is_absolute(&self) -> bool {
+        Path::new(self.as_str()).is_absolute()
+    }
+
     pub fn is_markdown_file(&self) -> bool {
         matches!(self.extension(), Some(ext) if ext.eq_ignore_ascii_case("md"))
     }
@@ -247,9 +269,14 @@ pub struct FrontmostFileManagerReference {
 pub struct HoverResolutionReference {
     pub surface_kind: FrontSurfaceKind,
     pub requires_actual_hovered_item: bool,
+    pub supports_hovered_row_descendant: bool,
+    pub rejects_nearby_candidates: bool,
+    pub rejects_first_visible_fallbacks: bool,
     pub direct_path_attribute_names: [&'static str; 4],
     pub filename_fallback_uses_front_directory: bool,
+    pub requires_absolute_path: bool,
     pub requires_existing_local_markdown_file: bool,
+    pub requires_regular_file: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -523,9 +550,14 @@ pub static MACOS_REFERENCE_BEHAVIOR: MacOsReferenceBehavior = MacOsReferenceBeha
     hover_resolution: HoverResolutionReference {
         surface_kind: FrontSurfaceKind::FinderListView,
         requires_actual_hovered_item: true,
+        supports_hovered_row_descendant: true,
+        rejects_nearby_candidates: true,
+        rejects_first_visible_fallbacks: true,
         direct_path_attribute_names: ["AXFilename", "AXPath", "AXDocument", "AXURL"],
         filename_fallback_uses_front_directory: true,
+        requires_absolute_path: true,
         requires_existing_local_markdown_file: true,
+        requires_regular_file: true,
     },
     multi_monitor: MultiMonitorReference {
         coordinate_space: CoordinateSpaceReference::DesktopSpace,
@@ -719,7 +751,19 @@ impl ResolvedDocument {
     pub fn is_local_markdown_file(&self) -> bool {
         self.origin == DocumentOrigin::LocalFileSystem
             && self.kind == DocumentKind::File
+            && self.path.is_absolute()
             && self.path.is_markdown_file()
+    }
+}
+
+impl HoverResolutionReference {
+    pub fn accepts_scope(self, scope: HoverResolutionScope) -> bool {
+        match scope {
+            HoverResolutionScope::ExactItemUnderPointer => true,
+            HoverResolutionScope::HoveredRowDescendant => self.supports_hovered_row_descendant,
+            HoverResolutionScope::NearbyCandidate => !self.rejects_nearby_candidates,
+            HoverResolutionScope::FirstVisibleItem => !self.rejects_first_visible_fallbacks,
+        }
     }
 }
 
@@ -1096,10 +1140,13 @@ mod tests {
         let markdown = DocumentPath::from("/tmp/notes.md");
         let upper_case = DocumentPath::from("/tmp/NOTES.MD");
         let other = DocumentPath::from("/tmp/notes.txt");
+        let relative = DocumentPath::from("notes.md");
 
         assert!(markdown.is_markdown_file());
         assert!(upper_case.is_markdown_file());
         assert!(!other.is_markdown_file());
+        assert!(markdown.is_absolute());
+        assert!(!relative.is_absolute());
         assert_eq!(markdown.file_name(), Some("notes.md"));
     }
 
@@ -1117,10 +1164,17 @@ mod tests {
             DocumentOrigin::LocalFileSystem,
             DocumentKind::Directory,
         );
+        let relative = ResolvedDocument::new(
+            "spec.md",
+            "spec.md",
+            DocumentOrigin::LocalFileSystem,
+            DocumentKind::File,
+        );
 
         assert!(sample_document().is_local_markdown_file());
         assert!(!remote.is_local_markdown_file());
         assert!(!directory.is_local_markdown_file());
+        assert!(!relative.is_local_markdown_file());
     }
 
     #[test]
@@ -1145,10 +1199,15 @@ mod tests {
             FrontSurfaceKind::FinderListView
         );
         assert!(reference.hover_resolution.requires_actual_hovered_item);
+        assert!(reference.hover_resolution.supports_hovered_row_descendant);
+        assert!(reference.hover_resolution.rejects_nearby_candidates);
+        assert!(reference.hover_resolution.rejects_first_visible_fallbacks);
         assert_eq!(
             reference.hover_resolution.direct_path_attribute_names,
             ["AXFilename", "AXPath", "AXDocument", "AXURL"]
         );
+        assert!(reference.hover_resolution.requires_absolute_path);
+        assert!(reference.hover_resolution.requires_regular_file);
         assert_eq!(
             reference.multi_monitor.coordinate_space,
             CoordinateSpaceReference::DesktopSpace
@@ -1202,6 +1261,20 @@ mod tests {
         assert_eq!(reference.hint_chip.background_label, "Tab");
         assert_eq!(reference.hint_chip.paging_label, "(⇧+) Space");
         assert_eq!(reference.hint_chip.width_label(1, 4), "← 2/4 →");
+    }
+
+    #[test]
+    fn hover_resolution_scope_contract_rejects_nearby_fallbacks() {
+        let reference = MACOS_REFERENCE_BEHAVIOR.hover_resolution;
+
+        assert!(reference.accepts_scope(HoverResolutionScope::ExactItemUnderPointer));
+        assert!(reference.accepts_scope(HoverResolutionScope::HoveredRowDescendant));
+        assert!(!reference.accepts_scope(HoverResolutionScope::NearbyCandidate));
+        assert!(!reference.accepts_scope(HoverResolutionScope::FirstVisibleItem));
+        assert!(HoverResolutionScope::ExactItemUnderPointer.supports_macos_parity());
+        assert!(HoverResolutionScope::HoveredRowDescendant.supports_macos_parity());
+        assert!(!HoverResolutionScope::NearbyCandidate.supports_macos_parity());
+        assert!(!HoverResolutionScope::FirstVisibleItem.supports_macos_parity());
     }
 
     #[test]

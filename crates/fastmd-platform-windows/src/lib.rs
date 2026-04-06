@@ -10,6 +10,7 @@
 pub mod adapter;
 pub mod filter;
 pub mod frontmost;
+pub mod hover;
 pub mod parity;
 pub mod validation;
 
@@ -24,6 +25,13 @@ pub use frontmost::{
     EXPLORER_WINDOW_CLASSES, FrontmostProbeError, FrontmostSurfaceRejection,
     FrontmostWindowSnapshot, WINDOWS_FRONTMOST_API_STACK, WindowsFrontmostApi,
     WindowsFrontmostApiStack, parse_frontmost_window_snapshot, resolve_frontmost_surface,
+};
+#[cfg(target_os = "windows")]
+pub use hover::probe_hovered_item_snapshot;
+pub use hover::{
+    HoverProbeError, HoveredExplorerItemSnapshot, HoveredItemProbeOutcome,
+    HoveredItemResolutionRejection, WINDOWS_HOVER_API_STACK, WindowsHoverApi, WindowsHoverApiStack,
+    classify_hovered_item_snapshot, parse_hovered_item_snapshot,
 };
 pub use parity::{
     BackgroundMode, BackgroundToggleKey, BackgroundToggleReference, ClosePolicyReference,

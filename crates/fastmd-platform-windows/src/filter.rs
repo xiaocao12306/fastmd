@@ -51,6 +51,10 @@ pub enum HoverCandidateRejection {
         description: String,
         source: HoverCandidateSource,
     },
+    RelativePath {
+        path: PathBuf,
+        source: HoverCandidateSource,
+    },
     MissingPath {
         path: PathBuf,
         source: HoverCandidateSource,
@@ -77,6 +81,14 @@ impl fmt::Display for HoverCandidateRejection {
                 "unsupported hovered item from {:?}: {}",
                 source, description
             ),
+            Self::RelativePath { path, source } => {
+                write!(
+                    f,
+                    "relative hovered path rejected from {:?}: {}",
+                    source,
+                    path.display()
+                )
+            }
             Self::MissingPath { path, source } => {
                 write!(
                     f,
@@ -139,6 +151,10 @@ impl WindowsMarkdownFilter {
         path: PathBuf,
         source: HoverCandidateSource,
     ) -> Result<AcceptedMarkdownPath, HoverCandidateRejection> {
+        if !path.is_absolute() {
+            return Err(HoverCandidateRejection::RelativePath { path, source });
+        }
+
         if !path.exists() {
             return Err(HoverCandidateRejection::MissingPath { path, source });
         }
@@ -245,6 +261,26 @@ mod tests {
             rejection,
             HoverCandidateRejection::Directory {
                 path,
+                source: HoverCandidateSource::ValidationFixture,
+            }
+        );
+    }
+
+    #[test]
+    fn rejects_relative_paths_before_filesystem_checks() {
+        let filter = WindowsMarkdownFilter;
+
+        let rejection = filter
+            .accept_candidate(HoverCandidate::LocalPath {
+                path: PathBuf::from("notes.md"),
+                source: HoverCandidateSource::ValidationFixture,
+            })
+            .expect_err("relative paths must stay rejected");
+
+        assert_eq!(
+            rejection,
+            HoverCandidateRejection::RelativePath {
+                path: PathBuf::from("notes.md"),
                 source: HoverCandidateSource::ValidationFixture,
             }
         );

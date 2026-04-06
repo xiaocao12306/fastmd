@@ -22,7 +22,7 @@ pub struct AdapterValidationManifest {
     pub features: &'static [AdapterValidationFeature],
 }
 
-pub static WINDOWS_VALIDATION_FEATURES: [AdapterValidationFeature; 11] = [
+pub static WINDOWS_VALIDATION_FEATURES: [AdapterValidationFeature; 12] = [
     AdapterValidationFeature {
         blueprint_item: "Restrict Windows support target to Windows 11 plus Explorer only",
         status: FeatureStatus::ImplementedInThisCrate,
@@ -49,9 +49,14 @@ pub static WINDOWS_VALIDATION_FEATURES: [AdapterValidationFeature; 11] = [
         evidence: "The Windows-only frontmost probe now executes the authoritative foreground-window/process/class lookup and ShellWindows HWND bridge, then rejects any snapshot that fails the strict Explorer classifier.",
     },
     AdapterValidationFeature {
+        blueprint_item: "Identify the authoritative Windows host API stack for hovered Explorer item resolution",
+        status: FeatureStatus::ImplementedInThisCrate,
+        evidence: "The hover lane now fixes the stack to UI Automation ElementFromPoint + ControlViewWalker + Current.Name + IShellWindows + IWebBrowserApp::HWND + Folder.ParseName + FolderItem.Path.",
+    },
+    AdapterValidationFeature {
         blueprint_item: "Reject non-Markdown files, directories, and unsupported items with the same semantics as macOS",
-        status: FeatureStatus::PendingAdapterWork,
-        evidence: "The crate-local WindowsMarkdownFilter mirrors the macOS path checks, but real Explorer hovered-item resolution is not wired yet.",
+        status: FeatureStatus::ImplementedInThisCrate,
+        evidence: "The Explorer hover pipeline now routes exact-item and hovered-row probe results through the crate-local WindowsMarkdownFilter, which rejects relative paths, stale paths, directories, unsupported entities, and non-Markdown extensions before preview open.",
     },
     AdapterValidationFeature {
         blueprint_item: "Implement Windows frontmost Explorer detection with the same gating semantics as macOS Finder",
@@ -60,8 +65,8 @@ pub static WINDOWS_VALIDATION_FEATURES: [AdapterValidationFeature; 11] = [
     },
     AdapterValidationFeature {
         blueprint_item: "Implement Windows hovered-item resolution so the actual hovered `.md` item is resolved",
-        status: FeatureStatus::PendingAdapterWork,
-        evidence: "Explicit seam only; actual Explorer hovered-item resolution remains pending.",
+        status: FeatureStatus::ImplementedInThisCrate,
+        evidence: "ExplorerAdapter::resolve_hovered_item now probes UI Automation at the pointer, allows only exact-item or hovered-row evidence, reconstructs an absolute path through the matched Explorer shell window, and rejects nearby / first-visible fallbacks.",
     },
     AdapterValidationFeature {
         blueprint_item: "Implement Windows multi-monitor coordinate handling with the same placement semantics as macOS",
@@ -110,7 +115,7 @@ mod tests {
             .filter(|feature| feature.status == FeatureStatus::ImplementedInThisCrate)
             .count();
 
-        assert_eq!(implemented, 6);
+        assert_eq!(implemented, 9);
         assert!(
             manifest
                 .features

@@ -20,16 +20,18 @@ This validation file is crate-local evidence only. It does not claim full Window
 - stable Explorer surface identity encoded as matched shell HWND plus owner process id instead of a generic foreground-window check
 - live Windows-only frontmost probing wired through PowerShell-backed foreground-window, process-image, class-name, and ShellWindows HWND collection calls
 - non-Explorer foreground windows now rejected by the same strict process/class/shell-identity classifier that the live probe feeds
-- crate-local local `.md` acceptance filtering implemented to mirror the macOS file checks
-- unit tests added for local Markdown acceptance, frontmost API-stack metadata, probe-output parsing, and stable-surface classification behavior
+- authoritative Windows hovered-item API stack encoded as UI Automation `ElementFromPoint`, `ControlViewWalker`, `AutomationElement.Current.Name`, `IShellWindows`, `IWebBrowserApp::HWND`, `Folder.ParseName`, and `FolderItem.Path`
+- live Windows-only hovered-item probing wired through a PowerShell UI Automation hit-test plus Explorer shell-window path reconstruction
+- exact-item and hovered-row descendant evidence accepted; nearby or first-visible fallbacks explicitly rejected before preview open
+- crate-local local `.md` acceptance filtering now runs inside the Explorer hovered-item pipeline and rejects relative paths, missing paths, directories, unsupported entities, and non-Markdown extensions
+- unit tests added for hover API-stack metadata, probe-output parsing, exact-vs-fallback evidence classification, adapter wiring, relative-path rejection, and stable-surface classification behavior
 
 ## Still pending
 
-- Explorer hovered-item resolution
 - coordinate translation and placement parity
 - preview interaction parity wiring; the shared edit-lock and close-policy rules are now validated in `fastmd-core`, but Explorer/Tauri wiring is still pending
 - runtime diagnostics parity
-- validation evidence on a real Windows 11 machine
+- validation evidence on a real Windows 11 machine for frontmost gating and exact hovered-item resolution
 
 ## Verification commands
 
@@ -47,7 +49,7 @@ cargo test --manifest-path crates/fastmd-platform-windows/Cargo.toml
 
 ## Actual results in this worker clone
 
+- `rustup run stable-aarch64-apple-darwin cargo fmt --all`: passed
 - `rustup run stable-aarch64-apple-darwin cargo fmt --all --check`: passed
-- `rustup run stable-aarch64-apple-darwin cargo metadata --manifest-path crates/fastmd-platform-windows/Cargo.toml --format-version 1 --no-deps`: passed
-- `rustup run stable-aarch64-apple-darwin cargo test --manifest-path crates/fastmd-platform-windows/Cargo.toml`: blocked by the local Rosetta linker environment aborting inside `cc` with `Attachment of code signature supplement failed: 1`
-- `rustup run stable-aarch64-apple-darwin cargo check -p fastmd-contracts -p fastmd-core -p fastmd-platform -p fastmd-platform-windows`: blocked by the local Rosetta linker environment aborting inside `cc` with `Attachment of code signature supplement failed: 1`
+- `rustup run stable-aarch64-apple-darwin cargo metadata --format-version 1 --no-deps`: passed
+- `rustup run stable-aarch64-apple-darwin cargo test -p fastmd-contracts -p fastmd-core -p fastmd-platform-windows`: blocked before crate tests ran because the local Rosetta linker environment aborted inside `cc` with `Attachment of code signature supplement failed: 1` while compiling dependency build scripts
