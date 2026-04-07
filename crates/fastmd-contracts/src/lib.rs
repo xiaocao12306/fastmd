@@ -722,6 +722,36 @@ impl MacOsPreviewFeature {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum PreviewFeatureCoverageLane {
+    SharedCore,
+    SharedRender,
+    WindowsAdapter,
+}
+
+impl PreviewFeatureCoverageLane {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::SharedCore => "shared-core",
+            Self::SharedRender => "shared-render",
+            Self::WindowsAdapter => "windows-adapter",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub struct PreviewFeatureCoverageRecord {
+    pub feature: MacOsPreviewFeature,
+    pub lane: PreviewFeatureCoverageLane,
+}
+
+impl PreviewFeatureCoverageRecord {
+    pub const fn new(feature: MacOsPreviewFeature, lane: PreviewFeatureCoverageLane) -> Self {
+        Self { feature, lane }
+    }
+}
+
 pub static MACOS_PREVIEW_FEATURE_LIST: [MacOsPreviewFeature; 20] = [
     MacOsPreviewFeature::FrontmostFileManagerGating,
     MacOsPreviewFeature::ExactHoveredMarkdownResolution,
@@ -768,6 +798,31 @@ pub fn merged_preview_feature_coverage(
     }
 
     features.into_iter().collect()
+}
+
+pub fn merged_preview_feature_coverage_records(
+    record_sets: &[&[PreviewFeatureCoverageRecord]],
+) -> Vec<PreviewFeatureCoverageRecord> {
+    let mut records = BTreeSet::new();
+    for record_set in record_sets {
+        records.extend(record_set.iter().copied());
+    }
+
+    records.into_iter().collect()
+}
+
+pub fn preview_feature_coverage_lanes(
+    records: &[PreviewFeatureCoverageRecord],
+    feature: MacOsPreviewFeature,
+) -> Vec<PreviewFeatureCoverageLane> {
+    let mut lanes = BTreeSet::new();
+    for record in records {
+        if record.feature == feature {
+            lanes.insert(record.lane);
+        }
+    }
+
+    lanes.into_iter().collect()
 }
 
 pub fn preview_feature_gaps_against_reference(
@@ -1844,6 +1899,49 @@ mod tests {
         assert!(preview_feature_coverage_matches_reference(&[
             macos_preview_feature_list()
         ]));
+    }
+
+    #[test]
+    fn preview_feature_coverage_record_helpers_keep_feature_lane_pairs_explicit() {
+        let records = merged_preview_feature_coverage_records(&[
+            &[
+                PreviewFeatureCoverageRecord::new(
+                    MacOsPreviewFeature::HoverOpensAfterOneSecond,
+                    PreviewFeatureCoverageLane::SharedCore,
+                ),
+                PreviewFeatureCoverageRecord::new(
+                    MacOsPreviewFeature::WidthTierModel,
+                    PreviewFeatureCoverageLane::SharedCore,
+                ),
+            ],
+            &[
+                PreviewFeatureCoverageRecord::new(
+                    MacOsPreviewFeature::WidthTierModel,
+                    PreviewFeatureCoverageLane::SharedCore,
+                ),
+                PreviewFeatureCoverageRecord::new(
+                    MacOsPreviewFeature::WidthTierModel,
+                    PreviewFeatureCoverageLane::WindowsAdapter,
+                ),
+                PreviewFeatureCoverageRecord::new(
+                    MacOsPreviewFeature::CompactHintChipChrome,
+                    PreviewFeatureCoverageLane::SharedRender,
+                ),
+            ],
+        ]);
+
+        assert_eq!(records.len(), 4);
+        assert_eq!(
+            preview_feature_coverage_lanes(&records, MacOsPreviewFeature::WidthTierModel),
+            vec![
+                PreviewFeatureCoverageLane::SharedCore,
+                PreviewFeatureCoverageLane::WindowsAdapter,
+            ]
+        );
+        assert_eq!(
+            PreviewFeatureCoverageLane::SharedRender.label(),
+            "shared-render"
+        );
     }
 
     #[test]

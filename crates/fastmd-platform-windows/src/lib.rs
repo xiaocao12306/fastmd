@@ -59,7 +59,8 @@ pub use parity::{
     WINDOWS_EXPLORER_FRONTMOST_REFERENCE, WINDOWS_EXPLORER_STAGE2_TARGET,
 };
 pub use preview::{
-    windows_adapter_preview_feature_coverage, windows_preview_loop_feature_coverage,
+    windows_adapter_preview_feature_coverage, windows_adapter_preview_feature_coverage_records,
+    windows_preview_loop_feature_coverage, windows_preview_loop_feature_coverage_records,
     PreviewLoopError, WindowsPreviewLoop,
 };
 pub use validation::{

@@ -2,9 +2,9 @@ use std::cmp::Ordering;
 
 use fastmd_contracts::{
     AppCommand, AppEvent, CloseReason, EditingPhase, FrontSurface, HintChipContract, HoveredItem,
-    MacOsPreviewFeature, MonitorMetadata, PageInput, PagingMotion, PreviewState,
-    PreviewWindowRequest, ResolvedDocument, RuntimeDiagnostic, ScreenPoint, ScreenRect,
-    MACOS_REFERENCE_BEHAVIOR,
+    MacOsPreviewFeature, MonitorMetadata, PageInput, PagingMotion, PreviewFeatureCoverageLane,
+    PreviewFeatureCoverageRecord, PreviewState, PreviewWindowRequest, ResolvedDocument,
+    RuntimeDiagnostic, ScreenPoint, ScreenRect, MACOS_REFERENCE_BEHAVIOR,
 };
 use fastmd_render::{find_block_for_editing_state, find_smallest_matching_block, BlockMapping};
 
@@ -469,6 +469,67 @@ pub fn shared_core_preview_feature_coverage() -> &'static [MacOsPreviewFeature] 
     ]
 }
 
+pub fn shared_core_preview_feature_coverage_records() -> &'static [PreviewFeatureCoverageRecord] {
+    &[
+        PreviewFeatureCoverageRecord::new(
+            MacOsPreviewFeature::FrontmostFileManagerGating,
+            PreviewFeatureCoverageLane::SharedCore,
+        ),
+        PreviewFeatureCoverageRecord::new(
+            MacOsPreviewFeature::HoverOpensAfterOneSecond,
+            PreviewFeatureCoverageLane::SharedCore,
+        ),
+        PreviewFeatureCoverageRecord::new(
+            MacOsPreviewFeature::DifferentDocumentReplacesCurrentPreview,
+            PreviewFeatureCoverageLane::SharedCore,
+        ),
+        PreviewFeatureCoverageRecord::new(
+            MacOsPreviewFeature::StationaryHoveredItemDoesNotReopen,
+            PreviewFeatureCoverageLane::SharedCore,
+        ),
+        PreviewFeatureCoverageRecord::new(
+            MacOsPreviewFeature::SameDocumentPointerMotionKeepsPreview,
+            PreviewFeatureCoverageLane::SharedCore,
+        ),
+        PreviewFeatureCoverageRecord::new(
+            MacOsPreviewFeature::WidthTierModel,
+            PreviewFeatureCoverageLane::SharedCore,
+        ),
+        PreviewFeatureCoverageRecord::new(
+            MacOsPreviewFeature::PreviewPlacementRepositionBeforeShrink,
+            PreviewFeatureCoverageLane::SharedCore,
+        ),
+        PreviewFeatureCoverageRecord::new(
+            MacOsPreviewFeature::CompactHintChipChrome,
+            PreviewFeatureCoverageLane::SharedCore,
+        ),
+        PreviewFeatureCoverageRecord::new(
+            MacOsPreviewFeature::HotInteractionSurface,
+            PreviewFeatureCoverageLane::SharedCore,
+        ),
+        PreviewFeatureCoverageRecord::new(
+            MacOsPreviewFeature::BackgroundToggleTab,
+            PreviewFeatureCoverageLane::SharedCore,
+        ),
+        PreviewFeatureCoverageRecord::new(
+            MacOsPreviewFeature::ScrollWheelAndTouchpad,
+            PreviewFeatureCoverageLane::SharedCore,
+        ),
+        PreviewFeatureCoverageRecord::new(
+            MacOsPreviewFeature::PagingKeysAndStickyMotion,
+            PreviewFeatureCoverageLane::SharedCore,
+        ),
+        PreviewFeatureCoverageRecord::new(
+            MacOsPreviewFeature::EditSaveCancelAndLock,
+            PreviewFeatureCoverageLane::SharedCore,
+        ),
+        PreviewFeatureCoverageRecord::new(
+            MacOsPreviewFeature::ClosePolicyOutsideClickAppSwitchEscape,
+            PreviewFeatureCoverageLane::SharedCore,
+        ),
+    ]
+}
+
 pub fn shared_core_hint_chip_contract(state: &PreviewState) -> HintChipContract {
     state.hint_chip_contract()
 }
@@ -567,7 +628,7 @@ mod tests {
     use fastmd_contracts::{
         preview_feature_gaps_against_reference, AppCommand, BackgroundMode, DocumentKind,
         DocumentOrigin, DocumentPath, EditingPhase, FrontSurfaceIdentity, FrontSurfaceKind,
-        MacOsPreviewFeature, PageDirection, PlatformId,
+        MacOsPreviewFeature, PageDirection, PlatformId, PreviewFeatureCoverageLane,
     };
     use fastmd_render::BlockKind;
     use std::collections::BTreeSet;
@@ -807,6 +868,28 @@ mod tests {
         .collect();
 
         assert_eq!(gaps, expected);
+    }
+
+    #[test]
+    fn shared_core_preview_feature_coverage_records_stay_tagged_to_the_core_lane() {
+        let records = shared_core_preview_feature_coverage_records();
+        let recorded_features: BTreeSet<_> = records.iter().map(|record| record.feature).collect();
+        let plain_features: BTreeSet<_> = shared_core_preview_feature_coverage()
+            .iter()
+            .copied()
+            .collect();
+
+        assert_eq!(records.len(), 14);
+        assert_eq!(recorded_features, plain_features);
+        assert!(records
+            .iter()
+            .all(|record| { record.lane == PreviewFeatureCoverageLane::SharedCore }));
+        assert!(records
+            .iter()
+            .any(|record| { record.feature == MacOsPreviewFeature::HoverOpensAfterOneSecond }));
+        assert!(records.iter().any(|record| {
+            record.feature == MacOsPreviewFeature::ClosePolicyOutsideClickAppSwitchEscape
+        }));
     }
 
     #[test]

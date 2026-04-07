@@ -1,15 +1,19 @@
 use std::fmt;
 
 use fastmd_contracts::{
-    merged_preview_feature_coverage, AppCommand, AppEvent, DocumentKind, DocumentOrigin,
-    HoverResolutionScope, HoveredItem, MacOsPreviewFeature, PlatformId, PreviewState,
+    merged_preview_feature_coverage, merged_preview_feature_coverage_records, AppCommand, AppEvent,
+    DocumentKind, DocumentOrigin, HoverResolutionScope, HoveredItem, MacOsPreviewFeature,
+    PlatformId, PreviewFeatureCoverageLane, PreviewFeatureCoverageRecord, PreviewState,
     PreviewWindowRequest, ResolvedDocument, RuntimeDiagnostic, RuntimeDiagnosticCategory,
     RuntimeDiagnosticLevel, ScreenPoint,
 };
-use fastmd_core::{shared_core_preview_feature_coverage, CoreEngine};
+use fastmd_core::{
+    shared_core_preview_feature_coverage, shared_core_preview_feature_coverage_records, CoreEngine,
+};
 use fastmd_render::{
     apply_inline_edit_to_markdown, build_inline_editor_model_for_editing_state,
-    shared_render_preview_feature_coverage, BlockMapping, InlineEditorModel,
+    shared_render_preview_feature_coverage, shared_render_preview_feature_coverage_records,
+    BlockMapping, InlineEditorModel,
 };
 
 use crate::{
@@ -286,11 +290,45 @@ pub fn windows_adapter_preview_feature_coverage() -> &'static [MacOsPreviewFeatu
     ]
 }
 
+pub fn windows_adapter_preview_feature_coverage_records() -> &'static [PreviewFeatureCoverageRecord]
+{
+    &[
+        PreviewFeatureCoverageRecord::new(
+            MacOsPreviewFeature::FrontmostFileManagerGating,
+            PreviewFeatureCoverageLane::WindowsAdapter,
+        ),
+        PreviewFeatureCoverageRecord::new(
+            MacOsPreviewFeature::ExactHoveredMarkdownResolution,
+            PreviewFeatureCoverageLane::WindowsAdapter,
+        ),
+        PreviewFeatureCoverageRecord::new(
+            MacOsPreviewFeature::AcceptedLocalMarkdownFilesOnly,
+            PreviewFeatureCoverageLane::WindowsAdapter,
+        ),
+        PreviewFeatureCoverageRecord::new(
+            MacOsPreviewFeature::MonitorSelectionAndCoordinateTranslation,
+            PreviewFeatureCoverageLane::WindowsAdapter,
+        ),
+        PreviewFeatureCoverageRecord::new(
+            MacOsPreviewFeature::RuntimeDiagnosticsCoverage,
+            PreviewFeatureCoverageLane::WindowsAdapter,
+        ),
+    ]
+}
+
 pub fn windows_preview_loop_feature_coverage() -> Vec<MacOsPreviewFeature> {
     merged_preview_feature_coverage(&[
         shared_core_preview_feature_coverage(),
         shared_render_preview_feature_coverage(),
         windows_adapter_preview_feature_coverage(),
+    ])
+}
+
+pub fn windows_preview_loop_feature_coverage_records() -> Vec<PreviewFeatureCoverageRecord> {
+    merged_preview_feature_coverage_records(&[
+        shared_core_preview_feature_coverage_records(),
+        shared_render_preview_feature_coverage_records(),
+        windows_adapter_preview_feature_coverage_records(),
     ])
 }
 
@@ -628,8 +666,8 @@ mod tests {
 
     use fastmd_contracts::{
         macos_preview_feature_list, AppCommand, AppEvent, BackgroundMode, CloseReason,
-        EditingPhase, PageDirection, PageInput, RuntimeDiagnostic, RuntimeDiagnosticCategory,
-        MACOS_REFERENCE_BEHAVIOR,
+        EditingPhase, MacOsPreviewFeature, PageDirection, PageInput, PreviewFeatureCoverageLane,
+        RuntimeDiagnostic, RuntimeDiagnosticCategory, MACOS_REFERENCE_BEHAVIOR,
     };
     use fastmd_render::{BlockKind, BlockMapping};
     use serde_json::json;
@@ -1539,5 +1577,28 @@ mod tests {
             .collect();
 
         assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn windows_preview_loop_feature_coverage_records_keep_shared_and_adapter_lanes_visible() {
+        let records = super::windows_preview_loop_feature_coverage_records();
+        let recorded_features: BTreeSet<_> = records.iter().map(|record| record.feature).collect();
+        let plain_features: BTreeSet<_> = super::windows_preview_loop_feature_coverage()
+            .into_iter()
+            .collect();
+
+        assert_eq!(recorded_features, plain_features);
+        assert!(records.iter().any(|record| {
+            record.feature == MacOsPreviewFeature::HoverOpensAfterOneSecond
+                && record.lane == PreviewFeatureCoverageLane::SharedCore
+        }));
+        assert!(records.iter().any(|record| {
+            record.feature == MacOsPreviewFeature::MarkdownRenderingSurface
+                && record.lane == PreviewFeatureCoverageLane::SharedRender
+        }));
+        assert!(records.iter().any(|record| {
+            record.feature == MacOsPreviewFeature::ExactHoveredMarkdownResolution
+                && record.lane == PreviewFeatureCoverageLane::WindowsAdapter
+        }));
     }
 }

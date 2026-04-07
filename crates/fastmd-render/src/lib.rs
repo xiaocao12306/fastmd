@@ -1,7 +1,8 @@
 use fastmd_contracts::{
     shared_hint_chip_contract, BackgroundMode, EditingState, HeadingRenderingReference,
     HintChipContract, InlineMarkupRenderingReference, MacOsPreviewFeature,
-    ParagraphRenderingReference, RenderingReference, RuntimeDiagnostic, MACOS_REFERENCE_BEHAVIOR,
+    ParagraphRenderingReference, PreviewFeatureCoverageLane, PreviewFeatureCoverageRecord,
+    RenderingReference, RuntimeDiagnostic, MACOS_REFERENCE_BEHAVIOR,
 };
 use serde::{Deserialize, Serialize};
 
@@ -391,6 +392,23 @@ pub fn shared_render_preview_feature_coverage() -> &'static [MacOsPreviewFeature
     ]
 }
 
+pub fn shared_render_preview_feature_coverage_records() -> &'static [PreviewFeatureCoverageRecord] {
+    &[
+        PreviewFeatureCoverageRecord::new(
+            MacOsPreviewFeature::CompactHintChipChrome,
+            PreviewFeatureCoverageLane::SharedRender,
+        ),
+        PreviewFeatureCoverageRecord::new(
+            MacOsPreviewFeature::InlineBlockEditEntryAndSourceMapping,
+            PreviewFeatureCoverageLane::SharedRender,
+        ),
+        PreviewFeatureCoverageRecord::new(
+            MacOsPreviewFeature::MarkdownRenderingSurface,
+            PreviewFeatureCoverageLane::SharedRender,
+        ),
+    ]
+}
+
 pub fn preview_chrome_model(
     selected_width_tier_index: usize,
     background_mode: BackgroundMode,
@@ -448,6 +466,7 @@ mod tests {
     use super::*;
     use fastmd_contracts::{
         preview_feature_gaps_against_reference, EditingPhase, EditingState, MacOsPreviewFeature,
+        PreviewFeatureCoverageLane,
     };
     use std::collections::BTreeSet;
     use std::fs;
@@ -651,6 +670,25 @@ mod tests {
         assert!(!gaps.contains(&MacOsPreviewFeature::CompactHintChipChrome));
         assert!(!gaps.contains(&MacOsPreviewFeature::InlineBlockEditEntryAndSourceMapping));
         assert!(!gaps.contains(&MacOsPreviewFeature::MarkdownRenderingSurface));
+    }
+
+    #[test]
+    fn shared_render_preview_feature_coverage_records_stay_tagged_to_the_render_lane() {
+        let records = shared_render_preview_feature_coverage_records();
+        let recorded_features: BTreeSet<_> = records.iter().map(|record| record.feature).collect();
+        let plain_features: BTreeSet<_> = shared_render_preview_feature_coverage()
+            .iter()
+            .copied()
+            .collect();
+
+        assert_eq!(records.len(), 3);
+        assert_eq!(recorded_features, plain_features);
+        assert!(records
+            .iter()
+            .all(|record| { record.lane == PreviewFeatureCoverageLane::SharedRender }));
+        assert!(records
+            .iter()
+            .any(|record| { record.feature == MacOsPreviewFeature::MarkdownRenderingSurface }));
     }
 
     #[test]

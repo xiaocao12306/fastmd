@@ -1,12 +1,13 @@
 use std::collections::BTreeSet;
 
 use fastmd_contracts::{
-    macos_preview_feature_list, preview_feature_coverage_matches_reference, MacOsPreviewFeature,
+    macos_preview_feature_list, preview_feature_coverage_lanes,
+    preview_feature_coverage_matches_reference, MacOsPreviewFeature, PreviewFeatureCoverageLane,
     ScreenPoint, ValidationCaptureProvenance,
 };
 
 use crate::{
-    windows_preview_loop_feature_coverage, FrontmostSurfaceProbe, HoveredItemProbeOutcome,
+    windows_preview_loop_feature_coverage_records, FrontmostSurfaceProbe, HoveredItemProbeOutcome,
     WindowsCoordinateTranslation, MACOS_REFERENCE_BEHAVIOR,
 };
 #[cfg(target_os = "windows")]
@@ -356,7 +357,13 @@ fn build_coordinate_section(
 fn build_feature_coverage_section(
     prerequisite_sections: &[&ValidationEvidenceSection],
 ) -> ValidationEvidenceSection {
-    let covered_features = windows_preview_loop_feature_coverage();
+    let coverage_records = windows_preview_loop_feature_coverage_records();
+    let covered_features: Vec<_> = coverage_records
+        .iter()
+        .map(|record| record.feature)
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect();
     let covered_set: BTreeSet<_> = covered_features.iter().copied().collect();
     let matches_reference =
         preview_feature_coverage_matches_reference(&[covered_features.as_slice()]);
@@ -405,9 +412,11 @@ fn build_feature_coverage_section(
         } else {
             "missing"
         };
+        let lanes = preview_feature_coverage_lanes(&coverage_records, *feature);
         details.push(format!(
-            "Reference feature `{}`: `{status}`",
-            feature.blueprint_label()
+            "Reference feature `{}`: automated lanes `{}`; status `{status}`",
+            feature.blueprint_label(),
+            coverage_lane_label_list(&lanes),
         ));
     }
 
@@ -460,6 +469,18 @@ fn feature_label_list(features: &[MacOsPreviewFeature]) -> String {
         .map(|feature| feature.blueprint_label())
         .collect::<Vec<_>>()
         .join("; ")
+}
+
+fn coverage_lane_label_list(lanes: &[PreviewFeatureCoverageLane]) -> String {
+    if lanes.is_empty() {
+        return "none".to_string();
+    }
+
+    lanes
+        .iter()
+        .map(|lane| lane.label())
+        .collect::<Vec<_>>()
+        .join(", ")
 }
 
 fn evidence_status_for_probe(
@@ -682,6 +703,15 @@ mod tests {
         assert!(markdown.contains("Open preview after a 1-second hover debounce"));
         assert!(markdown.contains(
             "Emit structured runtime diagnostics for host gating, hover resolution, placement, and edit lifecycle"
+        ));
+        assert!(markdown.contains(
+            "Reference feature `Open preview after a 1-second hover debounce`: automated lanes `shared-core`; status `covered`"
+        ));
+        assert!(markdown.contains(
+            "Reference feature `Preserve the macOS Markdown rendering surface, layout, and compact chrome copy`: automated lanes `shared-render`; status `covered`"
+        ));
+        assert!(markdown.contains(
+            "Reference feature `Resolve the actual hovered Markdown item instead of a nearby or first-visible candidate`: automated lanes `windows-adapter`; status `covered`"
         ));
         assert!(markdown.contains("Accepted Markdown path: `"));
         assert!(markdown.contains("Selection mode: `containing visible frame`"));
