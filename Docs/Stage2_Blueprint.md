@@ -614,10 +614,10 @@ Checklist reset rule:
 - [ ] Confirm directory rejection after live Nautilus host probes are wired
 - [ ] Confirm missing-path rejection after live Nautilus host probes are wired
 - [ ] Confirm unsupported-entity rejection after live Nautilus host probes are wired
-- [ ] Implement Ubuntu multi-monitor coordinate handling with the same placement semantics as macOS
-- [ ] Enumerate GNOME monitor work areas in a way that preserves the current macOS visible-frame semantics
-- [ ] Convert pointer coordinates into the same desktop-space model used by shared core placement logic
-- [ ] Prefer the containing monitor and fall back to the nearest monitor only when the pointer is outside every work area
+- [x] Implement Ubuntu multi-monitor coordinate handling with the same placement semantics as macOS
+- [x] Enumerate GNOME monitor work areas in a way that preserves the current macOS visible-frame semantics
+- [x] Convert pointer coordinates into the same desktop-space model used by shared core placement logic
+- [x] Prefer the containing monitor and fall back to the nearest monitor only when the pointer is outside every work area
 - [ ] Validate monitor selection and coordinate handling on a real Ubuntu 24.04 Wayland session
 - [ ] Validate monitor selection and coordinate handling on a real Ubuntu 24.04 X11 session
 - [x] Implement Wayland and X11 behavior handling without changing product semantics
@@ -633,10 +633,10 @@ Checklist reset rule:
 - [ ] Ensure ordinary pointer motion does not dismiss the preview if the hovered Markdown target did not change
 - [x] Implement the same four width tiers as macOS
 - [x] Bind Ubuntu preview sizing to the same 560 / 960 / 1440 / 1920 tier model as macOS
-- [ ] Implement the same 4:3 placement and “reposition before shrink” policy as macOS
-- [ ] Apply the same edge inset and pointer offset rules as macOS
-- [ ] Preserve requested tier size by repositioning before any size reduction
-- [ ] Reduce size only when the requested 4:3 tier truly cannot fit the current monitor work area
+- [x] Implement the same 4:3 placement and “reposition before shrink” policy as macOS
+- [x] Apply the same edge inset and pointer offset rules as macOS
+- [x] Preserve requested tier size by repositioning before any size reduction
+- [x] Reduce size only when the requested 4:3 tier truly cannot fit the current monitor work area
 - [x] Implement the same compact hint-chip behavior as macOS
 - [x] Keep the Ubuntu preview chrome free of Linux-only helper text that would diverge from macOS
 - [ ] Implement the same hot interaction-surface behavior as macOS

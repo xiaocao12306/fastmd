@@ -29,6 +29,7 @@ export interface HostCapabilities {
   closeOnBlurEnabled: boolean;
   canPersistPreviewEdits: boolean;
   linuxProbePlans?: LinuxProbePlans | null;
+  linuxPreviewPlacement?: LinuxPreviewPlacement | null;
 }
 
 export interface LinuxProbePlans {
@@ -36,6 +37,15 @@ export interface LinuxProbePlans {
   x11FrontmostApiStack: string;
   waylandHoveredItemApiStack: string;
   x11HoveredItemApiStack: string;
+}
+
+export interface LinuxPreviewPlacement {
+  monitorWorkAreaSource: string;
+  monitorSelectionPolicy: string;
+  coordinateSpace: string;
+  aspectRatio: string;
+  edgeInsetPx: number;
+  pointerOffsetPx: number;
 }
 
 export interface BootstrapPayload {

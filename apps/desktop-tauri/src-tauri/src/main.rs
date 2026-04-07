@@ -2,11 +2,13 @@ use std::sync::Mutex;
 
 use fastmd_platform_linux_nautilus::{
     api_stack_for_display_server, hovered_item_api_stack_for_display_server, DisplayServerKind,
+    Monitor as PlatformMonitor, MonitorLayout as PlatformMonitorLayout,
+    ScreenPoint as PlatformScreenPoint, ScreenRect as PlatformScreenRect,
 };
 use serde::Serialize;
 use tauri::{
-    AppHandle, Emitter, Manager, PhysicalPosition, PhysicalSize, Position, Size, State,
-    WebviewWindow, WindowEvent,
+    AppHandle, Emitter, Manager, Monitor as TauriMonitor, PhysicalPosition, PhysicalRect,
+    PhysicalSize, Position, Size, State, WebviewWindow, WindowEvent,
 };
 use tauri_plugin_global_shortcut::Builder as GlobalShortcutBuilder;
 
@@ -15,6 +17,9 @@ const SHELL_STATE_EVENT: &str = "fastmd://shell-state";
 const HOST_CAPABILITIES_EVENT: &str = "fastmd://host-capabilities";
 const CLOSE_REQUESTED_EVENT: &str = "fastmd://close-requested";
 const WIDTH_TIERS: [u32; 4] = [560, 960, 1440, 1920];
+const PREVIEW_ASPECT_RATIO: f64 = 4.0 / 3.0;
+const PREVIEW_EDGE_INSET: f64 = 12.0;
+const PREVIEW_POINTER_OFFSET: f64 = 18.0;
 
 #[derive(Clone, Copy, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -62,6 +67,7 @@ struct HostCapabilitiesPayload {
     close_on_blur_enabled: bool,
     can_persist_preview_edits: bool,
     linux_probe_plans: Option<LinuxProbePlansPayload>,
+    linux_preview_placement: Option<LinuxPreviewPlacementPayload>,
 }
 
 #[derive(Clone, Serialize)]
@@ -102,6 +108,17 @@ struct LinuxProbePlansPayload {
     x11_hovered_item_api_stack: String,
 }
 
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct LinuxPreviewPlacementPayload {
+    monitor_work_area_source: &'static str,
+    monitor_selection_policy: &'static str,
+    coordinate_space: &'static str,
+    aspect_ratio: &'static str,
+    edge_inset_px: u32,
+    pointer_offset_px: u32,
+}
+
 struct ShellBridgeState {
     shell_state: Mutex<ShellStatePayload>,
     host_capabilities: Mutex<HostCapabilitiesPayload>,
@@ -131,6 +148,7 @@ impl ShellBridgeState {
                 close_on_blur_enabled: true,
                 can_persist_preview_edits: false,
                 linux_probe_plans: linux_probe_plans_payload(),
+                linux_preview_placement: linux_preview_placement_payload(),
             }),
             is_editing: Mutex::new(false),
             last_anchor: Mutex::new(None),
@@ -186,6 +204,21 @@ fn linux_probe_plans_payload() -> Option<LinuxProbePlansPayload> {
     })
 }
 
+fn linux_preview_placement_payload() -> Option<LinuxPreviewPlacementPayload> {
+    if !cfg!(target_os = "linux") {
+        return None;
+    }
+
+    Some(LinuxPreviewPlacementPayload {
+        monitor_work_area_source: "tauri-runtime-wry linux monitor.work_area via GDK/GNOME workarea",
+        monitor_selection_policy: "containing-work-area-then-nearest",
+        coordinate_space: "desktop-space physical pixels",
+        aspect_ratio: "4:3",
+        edge_inset_px: PREVIEW_EDGE_INSET as u32,
+        pointer_offset_px: PREVIEW_POINTER_OFFSET as u32,
+    })
+}
+
 fn emit_shell_state(app: &AppHandle, state: &ShellBridgeState) -> Result<(), String> {
     app.emit(SHELL_STATE_EVENT, state.snapshot_shell_state())
         .map_err(|error| error.to_string())
@@ -208,45 +241,119 @@ fn current_anchor_or_monitor_center(
         .current_monitor()
         .map_err(|error| error.to_string())?
         .ok_or_else(|| "No monitor is available for preview geometry.".to_owned())?;
-    let monitor_position = monitor.position();
-    let monitor_size = monitor.size();
+    let work_area = *monitor.work_area();
 
     Ok(ScreenPoint {
-        x: f64::from(monitor_position.x + (monitor_size.width as i32 / 2)),
-        y: f64::from(monitor_position.y + (monitor_size.height as i32 / 2)),
+        x: f64::from(work_area.position.x) + f64::from(work_area.size.width) / 2.0,
+        y: f64::from(work_area.position.y) + f64::from(work_area.size.height) / 2.0,
     })
+}
+
+fn platform_screen_point(point: ScreenPoint) -> PlatformScreenPoint {
+    PlatformScreenPoint {
+        x: point.x,
+        y: point.y,
+    }
+}
+
+fn platform_screen_rect_from_tauri_rect(rect: PhysicalRect<i32, u32>) -> PlatformScreenRect {
+    PlatformScreenRect {
+        x: f64::from(rect.position.x),
+        y: f64::from(rect.position.y),
+        width: f64::from(rect.size.width),
+        height: f64::from(rect.size.height),
+    }
+}
+
+fn monitor_identity_key(monitor: &TauriMonitor) -> (i32, i32, u32, u32) {
+    let position = monitor.position();
+    let size = monitor.size();
+    (position.x, position.y, size.width, size.height)
+}
+
+fn platform_monitor_layout_from_tauri(
+    monitors: &[TauriMonitor],
+    primary_identity: Option<(i32, i32, u32, u32)>,
+) -> PlatformMonitorLayout {
+    PlatformMonitorLayout {
+        monitors: monitors
+            .iter()
+            .enumerate()
+            .map(|(index, monitor)| {
+                let full_frame = PlatformScreenRect {
+                    x: f64::from(monitor.position().x),
+                    y: f64::from(monitor.position().y),
+                    width: f64::from(monitor.size().width),
+                    height: f64::from(monitor.size().height),
+                };
+                PlatformMonitor {
+                    id: format!("monitor-{index}"),
+                    frame: full_frame,
+                    work_area: platform_screen_rect_from_tauri_rect(*monitor.work_area()),
+                    primary: primary_identity
+                        .is_some_and(|identity| identity == monitor_identity_key(monitor)),
+                }
+            })
+            .collect(),
+    }
+}
+
+fn selected_work_area_for_anchor(
+    layout: &PlatformMonitorLayout,
+    anchor: ScreenPoint,
+) -> Option<PlatformScreenRect> {
+    layout
+        .monitor_for_point(platform_screen_point(anchor))
+        .map(|monitor| monitor.work_area)
+}
+
+fn preview_work_area_for_anchor(
+    window: &WebviewWindow,
+    anchor: ScreenPoint,
+) -> Result<PlatformScreenRect, String> {
+    let monitors = window
+        .available_monitors()
+        .map_err(|error| error.to_string())?;
+    if monitors.is_empty() {
+        return Err("No monitor is available for preview geometry.".to_owned());
+    }
+
+    let primary_identity = window
+        .primary_monitor()
+        .map_err(|error| error.to_string())?
+        .as_ref()
+        .map(monitor_identity_key);
+    let layout = platform_monitor_layout_from_tauri(&monitors, primary_identity);
+
+    selected_work_area_for_anchor(&layout, anchor)
+        .ok_or_else(|| "No monitor work area is available for preview geometry.".to_owned())
 }
 
 fn compute_preview_geometry(
     anchor: ScreenPoint,
-    monitor_position: PhysicalPosition<i32>,
-    monitor_size: PhysicalSize<u32>,
+    work_area: PlatformScreenRect,
     requested_width: u32,
 ) -> PreviewGeometryPayload {
-    let aspect_ratio = 4.0 / 3.0;
-    let edge_inset = 12.0;
-    let pointer_offset = 18.0;
-
-    let min_x = monitor_position.x as f64 + edge_inset;
-    let min_y = monitor_position.y as f64 + edge_inset;
-    let available_width = (monitor_size.width as f64 - edge_inset * 2.0).max(320.0);
-    let available_height = (monitor_size.height as f64 - edge_inset * 2.0).max(240.0);
-    let max_fit_width = available_width.min(available_height * aspect_ratio);
-    let max_fit_height = max_fit_width / aspect_ratio;
+    let min_x = work_area.x + PREVIEW_EDGE_INSET;
+    let min_y = work_area.y + PREVIEW_EDGE_INSET;
+    let available_width = (work_area.width - PREVIEW_EDGE_INSET * 2.0).max(320.0);
+    let available_height = (work_area.height - PREVIEW_EDGE_INSET * 2.0).max(240.0);
+    let max_fit_width = available_width.min(available_height * PREVIEW_ASPECT_RATIO);
+    let max_fit_height = max_fit_width / PREVIEW_ASPECT_RATIO;
 
     let requested_width = requested_width as f64;
-    let requested_height = requested_width / aspect_ratio;
+    let requested_height = requested_width / PREVIEW_ASPECT_RATIO;
     let width = requested_width.min(max_fit_width);
     let height = requested_height.min(max_fit_height);
 
-    let max_x = monitor_position.x as f64 + monitor_size.width as f64 - width - edge_inset;
-    let max_y = monitor_position.y as f64 + monitor_size.height as f64 - height - edge_inset;
+    let max_x = work_area.x + work_area.width - width - PREVIEW_EDGE_INSET;
+    let max_y = work_area.y + work_area.height - height - PREVIEW_EDGE_INSET;
 
-    let mut origin_x = anchor.x + pointer_offset;
-    let mut origin_y = anchor.y - height - pointer_offset;
+    let mut origin_x = anchor.x + PREVIEW_POINTER_OFFSET;
+    let mut origin_y = anchor.y - height - PREVIEW_POINTER_OFFSET;
 
     if origin_x > max_x {
-        origin_x = anchor.x - width - pointer_offset;
+        origin_x = anchor.x - width - PREVIEW_POINTER_OFFSET;
     }
     if origin_x < min_x {
         origin_x = min_x;
@@ -256,7 +363,7 @@ fn compute_preview_geometry(
     }
 
     if origin_y < min_y {
-        origin_y = anchor.y + pointer_offset;
+        origin_y = anchor.y + PREVIEW_POINTER_OFFSET;
     }
     if origin_y > max_y {
         origin_y = max_y;
@@ -278,11 +385,6 @@ fn apply_preview_geometry_internal(
     state: &ShellBridgeState,
     anchor: Option<ScreenPoint>,
 ) -> Result<PreviewGeometryPayload, String> {
-    let monitor = window
-        .current_monitor()
-        .map_err(|error| error.to_string())?
-        .ok_or_else(|| "No monitor is available for preview geometry.".to_owned())?;
-
     let effective_anchor = match anchor {
         Some(anchor) => {
             *state.last_anchor.lock().unwrap() = Some(anchor);
@@ -290,18 +392,14 @@ fn apply_preview_geometry_internal(
         }
         None => current_anchor_or_monitor_center(window, state)?,
     };
+    let work_area = preview_work_area_for_anchor(window, effective_anchor)?;
 
     let requested_width = {
         let shell_state = state.shell_state.lock().unwrap();
         shell_state.width_tiers[shell_state.selected_width_tier_index]
     };
 
-    let geometry = compute_preview_geometry(
-        effective_anchor,
-        *monitor.position(),
-        *monitor.size(),
-        requested_width,
-    );
+    let geometry = compute_preview_geometry(effective_anchor, work_area, requested_width);
 
     window
         .set_size(Size::Physical(PhysicalSize::new(
@@ -536,5 +634,123 @@ mod tests {
                 .is_some(),
             cfg!(target_os = "linux")
         );
+    }
+
+    #[test]
+    fn linux_preview_placement_metadata_is_only_advertised_on_linux_targets() {
+        let shell_state = ShellBridgeState::new();
+
+        assert_eq!(
+            shell_state
+                .snapshot_host_capabilities()
+                .linux_preview_placement
+                .is_some(),
+            cfg!(target_os = "linux")
+        );
+    }
+
+    #[test]
+    fn shell_monitor_selection_prefers_containing_work_area_then_nearest() {
+        let layout = PlatformMonitorLayout {
+            monitors: vec![
+                PlatformMonitor {
+                    id: "primary".to_owned(),
+                    frame: PlatformScreenRect {
+                        x: 0.0,
+                        y: 0.0,
+                        width: 1920.0,
+                        height: 1080.0,
+                    },
+                    work_area: PlatformScreenRect {
+                        x: 0.0,
+                        y: 0.0,
+                        width: 1920.0,
+                        height: 1040.0,
+                    },
+                    primary: true,
+                },
+                PlatformMonitor {
+                    id: "secondary".to_owned(),
+                    frame: PlatformScreenRect {
+                        x: 1920.0,
+                        y: 0.0,
+                        width: 2560.0,
+                        height: 1440.0,
+                    },
+                    work_area: PlatformScreenRect {
+                        x: 1920.0,
+                        y: 0.0,
+                        width: 2560.0,
+                        height: 1400.0,
+                    },
+                    primary: false,
+                },
+            ],
+        };
+
+        let containing = selected_work_area_for_anchor(
+            &layout,
+            ScreenPoint { x: 2200.0, y: 300.0 },
+        )
+        .unwrap();
+        assert_eq!(
+            containing,
+            PlatformScreenRect {
+                x: 1920.0,
+                y: 0.0,
+                width: 2560.0,
+                height: 1400.0,
+            }
+        );
+
+        let nearest =
+            selected_work_area_for_anchor(&layout, ScreenPoint { x: 5000.0, y: 5000.0 }).unwrap();
+        assert_eq!(
+            nearest,
+            PlatformScreenRect {
+                x: 1920.0,
+                y: 0.0,
+                width: 2560.0,
+                height: 1400.0,
+            }
+        );
+    }
+
+    #[test]
+    fn preview_geometry_repositions_before_shrinking_when_requested_tier_still_fits() {
+        let geometry = compute_preview_geometry(
+            ScreenPoint { x: 980.0, y: 500.0 },
+            PlatformScreenRect {
+                x: 0.0,
+                y: 0.0,
+                width: 1200.0,
+                height: 900.0,
+            },
+            960,
+        );
+
+        assert_eq!(geometry.width, 960);
+        assert_eq!(geometry.height, 720);
+        assert_eq!(geometry.x, 2);
+        assert_eq!(geometry.y, 168);
+    }
+
+    #[test]
+    fn preview_geometry_shrinks_only_when_requested_tier_exceeds_work_area_capacity() {
+        let geometry = compute_preview_geometry(
+            ScreenPoint { x: 320.0, y: 240.0 },
+            PlatformScreenRect {
+                x: 0.0,
+                y: 0.0,
+                width: 700.0,
+                height: 500.0,
+            },
+            960,
+        );
+
+        assert_eq!(geometry.width, 635);
+        assert_eq!(geometry.height, 476);
+        assert_eq!(geometry.x, 12);
+        assert_eq!(geometry.y, 12);
     }
 }

@@ -173,6 +173,7 @@ export class PreviewShellApp {
         this.hostCapabilities = payload;
         this.syncCapabilitySummary();
         this.syncLinuxProbePlanAttributes();
+        this.syncLinuxPreviewPlacementAttributes();
         this.syncStatus();
       }),
     );
@@ -269,6 +270,7 @@ export class PreviewShellApp {
     this.documentTitleNode.textContent = this.shellState.documentTitle;
     this.syncCapabilitySummary();
     this.syncLinuxProbePlanAttributes();
+    this.syncLinuxPreviewPlacementAttributes();
     this.syncWidthChrome();
     this.applyBackgroundMode();
     this.syncStatus();
@@ -309,6 +311,27 @@ export class PreviewShellApp {
     this.shellNode.dataset.linuxX11FrontmostApiStack = probePlans.x11FrontmostApiStack;
     this.shellNode.dataset.linuxWaylandHoveredItemApiStack = probePlans.waylandHoveredItemApiStack;
     this.shellNode.dataset.linuxX11HoveredItemApiStack = probePlans.x11HoveredItemApiStack;
+  }
+
+  private syncLinuxPreviewPlacementAttributes(): void {
+    const placement = this.hostCapabilities.linuxPreviewPlacement;
+
+    if (!placement) {
+      delete this.shellNode.dataset.linuxMonitorWorkAreaSource;
+      delete this.shellNode.dataset.linuxMonitorSelectionPolicy;
+      delete this.shellNode.dataset.linuxCoordinateSpace;
+      delete this.shellNode.dataset.linuxPreviewAspectRatio;
+      delete this.shellNode.dataset.linuxEdgeInsetPx;
+      delete this.shellNode.dataset.linuxPointerOffsetPx;
+      return;
+    }
+
+    this.shellNode.dataset.linuxMonitorWorkAreaSource = placement.monitorWorkAreaSource;
+    this.shellNode.dataset.linuxMonitorSelectionPolicy = placement.monitorSelectionPolicy;
+    this.shellNode.dataset.linuxCoordinateSpace = placement.coordinateSpace;
+    this.shellNode.dataset.linuxPreviewAspectRatio = placement.aspectRatio;
+    this.shellNode.dataset.linuxEdgeInsetPx = String(placement.edgeInsetPx);
+    this.shellNode.dataset.linuxPointerOffsetPx = String(placement.pointerOffsetPx);
   }
 
   private syncWidthChrome(): void {

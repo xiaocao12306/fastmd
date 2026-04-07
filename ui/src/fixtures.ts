@@ -43,5 +43,6 @@ export const demoBootstrapPayload: BootstrapPayload = {
     closeOnBlurEnabled: false,
     canPersistPreviewEdits: false,
     linuxProbePlans: null,
+    linuxPreviewPlacement: null,
   },
 };

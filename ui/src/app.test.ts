@@ -140,6 +140,35 @@ describe("FastMD shared preview shell", () => {
     expect(document.body.textContent).not.toContain("X11 _NET_ACTIVE_WINDOW");
   });
 
+  it("stores Ubuntu preview-placement diagnostics as hidden shell metadata", async () => {
+    createApp({
+      ...demoBootstrapPayload,
+      hostCapabilities: {
+        ...demoBootstrapPayload.hostCapabilities,
+        platformId: "ubuntu",
+        runtimeMode: "desktop",
+        linuxPreviewPlacement: {
+          monitorWorkAreaSource: "tauri-runtime-wry linux monitor.work_area via GDK/GNOME workarea",
+          monitorSelectionPolicy: "containing-work-area-then-nearest",
+          coordinateSpace: "desktop-space physical pixels",
+          aspectRatio: "4:3",
+          edgeInsetPx: 12,
+          pointerOffsetPx: 18,
+        },
+      },
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const shell = document.querySelector(".shell") as HTMLElement | null;
+
+    expect(shell?.dataset.linuxMonitorSelectionPolicy).toBe("containing-work-area-then-nearest");
+    expect(shell?.dataset.linuxPreviewAspectRatio).toBe("4:3");
+    expect(shell?.dataset.linuxEdgeInsetPx).toBe("12");
+    expect(shell?.dataset.linuxPointerOffsetPx).toBe("18");
+    expect(document.body.textContent).not.toContain("containing-work-area-then-nearest");
+    expect(document.body.textContent).not.toContain("desktop-space physical pixels");
+  });
+
   it("uses the same paged-scroll overshoot plan as the macOS reference shell", () => {
     expect(resolvePagedScrollTargets(100, 1000, 4000, 1)).toEqual({
       target: 1020,

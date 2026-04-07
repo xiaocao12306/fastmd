@@ -81,12 +81,12 @@ pub fn crate_slice_validation_notes() -> Vec<ValidationNote> {
         ValidationNote {
             item: "Implement Ubuntu multi-monitor coordinate handling with the same placement semantics as macOS",
             status: ValidationStatus::NeedsUbuntuHostValidation,
-            note: "Containing-monitor and nearest-monitor selection are implemented; real GNOME monitor snapshots still need validation.",
+            note: "Containing-monitor and nearest-monitor selection are implemented, and the shared Tauri shell now consumes Linux monitor work_area rectangles in desktop-space coordinates; real GNOME monitor snapshots still need Ubuntu validation.",
         },
         ValidationNote {
             item: "Implement preview opening, rendering, editing, and close behavior parity",
             status: ValidationStatus::BlockedByLowerLayers,
-            note: "Shared shell parity now covers width tiers, hint-chip chrome, Tab toggle, paged scrolling, and Escape close; hover-driven opening, edit persistence, and host-driven close paths still depend on shared-core and live Nautilus wiring.",
+            note: "Shared shell parity now covers width tiers, work-area-based 4:3 placement, hint-chip chrome, Tab toggle, paged scrolling, and Escape close; hover-driven opening, edit persistence, and host-driven close paths still depend on shared-core and live Nautilus wiring.",
         },
     ]
 }
