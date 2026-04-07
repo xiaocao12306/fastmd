@@ -28,9 +28,16 @@ export interface HostCapabilities {
   globalShortcutRegistered: boolean;
   closeOnBlurEnabled: boolean;
   canPersistPreviewEdits: boolean;
+  hotInteractionSurface?: HotInteractionSurface | null;
   linuxProbePlans?: LinuxProbePlans | null;
   linuxPreviewPlacement?: LinuxPreviewPlacement | null;
   linuxRuntimeDiagnostics?: LinuxRuntimeDiagnostics | null;
+}
+
+export interface HotInteractionSurface {
+  windowFocusStrategy: string;
+  domFocusTarget: string;
+  pointerScrollRouting: string;
 }
 
 export interface LinuxProbePlans {

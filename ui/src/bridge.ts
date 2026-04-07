@@ -6,6 +6,7 @@ import type {
   CloseReason,
   CloseRequest,
   HostCapabilities,
+  HotInteractionSurface,
   LinuxProbePlans,
   LinuxRuntimeDiagnostics,
   PreviewGeometry,
@@ -110,6 +111,12 @@ export async function listenToCloseRequests(
 
 export function readLinuxProbePlans(capabilities: HostCapabilities): LinuxProbePlans | null {
   return capabilities.linuxProbePlans ?? null;
+}
+
+export function readHotInteractionSurface(
+  capabilities: HostCapabilities,
+): HotInteractionSurface | null {
+  return capabilities.hotInteractionSurface ?? null;
 }
 
 export function readLinuxRuntimeDiagnostics(

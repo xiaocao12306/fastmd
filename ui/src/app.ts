@@ -1,6 +1,7 @@
 import {
   adjustWidthTier,
   bootstrapShell,
+  readHotInteractionSurface,
   readLinuxProbePlans,
   readLinuxRuntimeDiagnostics,
   listenToCloseRequests,
@@ -21,6 +22,9 @@ const OVERSHOOT_DISTANCE_LIMIT = 34;
 const EDIT_LOCK_MESSAGE = "Edit mode is locked until you save or cancel.";
 const MEMORY_SAVE_MESSAGE =
   "This shell scaffold keeps inline block saves in memory until a real hovered source file is attached.";
+const DOM_DELTA_PIXEL = 0;
+const DOM_DELTA_LINE = 1;
+const DOM_DELTA_PAGE = 2;
 
 export interface PagedScrollPlan {
   target: number;
@@ -61,6 +65,26 @@ export function resolvePagedScrollTargets(
   }
 
   return { target, overshootTarget };
+}
+
+export function normalizeWheelScrollDelta(
+  deltaY: number,
+  deltaMode: number,
+  viewportHeight: number,
+): number {
+  if (!Number.isFinite(deltaY) || Math.abs(deltaY) < 0.01) {
+    return 0;
+  }
+
+  switch (deltaMode) {
+    case DOM_DELTA_LINE:
+      return deltaY * 10;
+    case DOM_DELTA_PAGE:
+      return deltaY * Math.max(viewportHeight, 1);
+    case DOM_DELTA_PIXEL:
+    default:
+      return deltaY;
+  }
 }
 
 export class PreviewShellApp {
@@ -151,6 +175,23 @@ export class PreviewShellApp {
       this.scrollByDelta(84);
     }
   };
+  private readonly onWheel = (event: WheelEvent) => {
+    if (this.editing || this.saving) {
+      return;
+    }
+
+    if (event.target instanceof Element && event.target.closest(".inline-editor")) {
+      return;
+    }
+
+    const delta = normalizeWheelScrollDelta(event.deltaY, event.deltaMode, window.innerHeight);
+    if (Math.abs(delta) < 0.01) {
+      return;
+    }
+
+    event.preventDefault();
+    this.scrollByDelta(delta);
+  };
 
   constructor(container: HTMLElement, bootstrapPayload: BootstrapPayload = demoBootstrapPayload) {
     this.container = container;
@@ -173,6 +214,7 @@ export class PreviewShellApp {
       await listenToHostCapabilities((payload) => {
         this.hostCapabilities = payload;
         this.syncCapabilitySummary();
+        this.syncHotInteractionSurfaceAttributes();
         this.syncLinuxProbePlanAttributes();
         this.syncLinuxPreviewPlacementAttributes();
         this.syncLinuxRuntimeDiagnosticAttributes();
@@ -190,6 +232,7 @@ export class PreviewShellApp {
   destroy(): void {
     this.renderRoot.removeEventListener("dblclick", this.onDoubleClick);
     window.removeEventListener("keydown", this.onKeyDown);
+    window.removeEventListener("wheel", this.onWheel);
 
     for (const unlisten of this.unlistenFns.splice(0)) {
       unlisten();
@@ -203,7 +246,7 @@ export class PreviewShellApp {
 
   private template(): string {
     return `
-      <div class="shell">
+      <div class="shell" tabindex="-1">
         <header class="toolbar">
           <div class="toolbar-title">
             <span class="eyebrow">FastMD Preview</span>
@@ -246,6 +289,7 @@ export class PreviewShellApp {
   private installEventHandlers(): void {
     this.renderRoot.addEventListener("dblclick", this.onDoubleClick);
     window.addEventListener("keydown", this.onKeyDown);
+    window.addEventListener("wheel", this.onWheel, { passive: false });
   }
 
   private async applyBootstrapPayload(
@@ -271,6 +315,7 @@ export class PreviewShellApp {
   private async render(pulseWidth: boolean): Promise<void> {
     this.documentTitleNode.textContent = this.shellState.documentTitle;
     this.syncCapabilitySummary();
+    this.syncHotInteractionSurfaceAttributes();
     this.syncLinuxProbePlanAttributes();
     this.syncLinuxPreviewPlacementAttributes();
     this.syncLinuxRuntimeDiagnosticAttributes();
@@ -286,6 +331,7 @@ export class PreviewShellApp {
       this.shellState.backgroundMode,
       this.shellState.contentBaseUrl ?? null,
     );
+    this.maintainHotInteractionSurface();
   }
 
   private syncCapabilitySummary(): void {
@@ -297,6 +343,23 @@ export class PreviewShellApp {
         : "";
     this.capabilitySummaryNode.textContent = summary;
     this.capabilitySummaryNode.hidden = summary.length === 0;
+  }
+
+  private syncHotInteractionSurfaceAttributes(): void {
+    const hotInteractionSurface = readHotInteractionSurface(this.hostCapabilities);
+
+    if (!hotInteractionSurface) {
+      delete this.shellNode.dataset.hotSurfaceWindowFocusStrategy;
+      delete this.shellNode.dataset.hotSurfaceDomFocusTarget;
+      delete this.shellNode.dataset.hotSurfacePointerScrollRouting;
+      return;
+    }
+
+    this.shellNode.dataset.hotSurfaceWindowFocusStrategy =
+      hotInteractionSurface.windowFocusStrategy;
+    this.shellNode.dataset.hotSurfaceDomFocusTarget = hotInteractionSurface.domFocusTarget;
+    this.shellNode.dataset.hotSurfacePointerScrollRouting =
+      hotInteractionSurface.pointerScrollRouting;
   }
 
   private syncLinuxProbePlanAttributes(): void {
@@ -502,6 +565,22 @@ export class PreviewShellApp {
         this.shellNode.classList.remove("is-width-transition");
       }, 380);
     });
+  }
+
+  private maintainHotInteractionSurface(): void {
+    if (this.editing || this.saving) {
+      return;
+    }
+
+    const activeElement = document.activeElement;
+    if (
+      activeElement instanceof Element &&
+      activeElement.closest(".inline-editor")
+    ) {
+      return;
+    }
+
+    this.shellNode.focus({ preventScroll: true });
   }
 
   private async handleWidthDelta(delta: number): Promise<void> {
@@ -712,6 +791,7 @@ export class PreviewShellApp {
     document.body.classList.remove("is-editing");
     await setEditingState(false);
     await this.render(false);
+    this.maintainHotInteractionSurface();
   }
 
   private async saveEdit(): Promise<void> {
@@ -751,6 +831,7 @@ export class PreviewShellApp {
       document.body.classList.remove("is-editing");
       await setEditingState(false);
       await this.render(false);
+      this.maintainHotInteractionSurface();
     } catch (error) {
       this.saving = false;
       this.transientStatus =

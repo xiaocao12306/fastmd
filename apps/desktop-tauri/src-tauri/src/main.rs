@@ -70,6 +70,7 @@ struct HostCapabilitiesPayload {
     global_shortcut_registered: bool,
     close_on_blur_enabled: bool,
     can_persist_preview_edits: bool,
+    hot_interaction_surface: Option<HotInteractionSurfacePayload>,
     linux_probe_plans: Option<LinuxProbePlansPayload>,
     linux_preview_placement: Option<LinuxPreviewPlacementPayload>,
     linux_runtime_diagnostics: Option<LinuxRuntimeDiagnosticsPayload>,
@@ -80,6 +81,14 @@ struct HostCapabilitiesPayload {
 struct BootstrapPayload {
     shell_state: ShellStatePayload,
     host_capabilities: HostCapabilitiesPayload,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct HotInteractionSurfacePayload {
+    window_focus_strategy: &'static str,
+    dom_focus_target: &'static str,
+    pointer_scroll_routing: &'static str,
 }
 
 #[derive(Clone, Copy, Serialize)]
@@ -241,6 +250,7 @@ impl ShellBridgeState {
                 global_shortcut_registered: true,
                 close_on_blur_enabled: true,
                 can_persist_preview_edits: false,
+                hot_interaction_surface: hot_interaction_surface_payload(),
                 linux_probe_plans: linux_probe_plans_payload(),
                 linux_preview_placement: linux_preview_placement_payload(),
                 linux_runtime_diagnostics: linux_runtime_diagnostics_payload(),
@@ -296,6 +306,21 @@ fn linux_probe_plans_payload() -> Option<LinuxProbePlansPayload> {
             DisplayServerKind::X11,
         )
         .diagnostic_summary(),
+    })
+}
+
+fn hot_interaction_surface_payload() -> Option<HotInteractionSurfacePayload> {
+    if !matches!(
+        detected_platform_id(),
+        "macos" | "windows" | "ubuntu"
+    ) {
+        return None;
+    }
+
+    Some(HotInteractionSurfacePayload {
+        window_focus_strategy: "tauri show+set_focus on reveal and global re-open",
+        dom_focus_target: ".shell root with tabindex=-1 after shell renders",
+        pointer_scroll_routing: "shared frontend wheel delta normalization routed into preview scroll",
     })
 }
 
@@ -959,6 +984,19 @@ mod tests {
                 .linux_runtime_diagnostics
                 .is_some(),
             cfg!(target_os = "linux")
+        );
+    }
+
+    #[test]
+    fn hot_interaction_surface_metadata_is_advertised_on_supported_desktop_targets() {
+        let shell_state = ShellBridgeState::new();
+
+        assert_eq!(
+            shell_state
+                .snapshot_host_capabilities()
+                .hot_interaction_surface
+                .is_some(),
+            matches!(detected_platform_id(), "macos" | "windows" | "ubuntu")
         );
     }
 

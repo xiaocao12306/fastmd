@@ -12,7 +12,11 @@ vi.mock("./bridge", async () => {
   };
 });
 
-import { PreviewShellApp, resolvePagedScrollTargets } from "./app";
+import {
+  normalizeWheelScrollDelta,
+  PreviewShellApp,
+  resolvePagedScrollTargets,
+} from "./app";
 import { demoBootstrapPayload } from "./fixtures";
 
 let app: PreviewShellApp | null = null;
@@ -169,6 +173,34 @@ describe("FastMD shared preview shell", () => {
     expect(document.body.textContent).not.toContain("desktop-space physical pixels");
   });
 
+  it("stores hot-surface routing metadata as hidden shell state", async () => {
+    createApp({
+      ...demoBootstrapPayload,
+      hostCapabilities: {
+        ...demoBootstrapPayload.hostCapabilities,
+        platformId: "ubuntu",
+        runtimeMode: "desktop",
+        hotInteractionSurface: {
+          windowFocusStrategy: "tauri show+set_focus on reveal and global re-open",
+          domFocusTarget: ".shell root with tabindex=-1 after shell renders",
+          pointerScrollRouting:
+            "shared frontend wheel delta normalization routed into preview scroll",
+        },
+      },
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const shell = document.querySelector(".shell") as HTMLElement | null;
+
+    expect(shell?.getAttribute("tabindex")).toBe("-1");
+    expect(shell?.dataset.hotSurfaceWindowFocusStrategy).toContain("set_focus");
+    expect(shell?.dataset.hotSurfaceDomFocusTarget).toContain(".shell");
+    expect(shell?.dataset.hotSurfacePointerScrollRouting).toContain(
+      "wheel delta normalization",
+    );
+    expect(document.body.textContent).not.toContain("wheel delta normalization");
+  });
+
   it("stores Ubuntu runtime diagnostics as hidden shell metadata", async () => {
     createApp({
       ...demoBootstrapPayload,
@@ -247,6 +279,13 @@ describe("FastMD shared preview shell", () => {
       target: 4000,
       overshootTarget: 4000,
     });
+  });
+
+  it("normalizes wheel deltas into the preview scroll model", () => {
+    expect(normalizeWheelScrollDelta(18, 0, 900)).toBe(18);
+    expect(normalizeWheelScrollDelta(3, 1, 900)).toBe(30);
+    expect(normalizeWheelScrollDelta(1, 2, 900)).toBe(900);
+    expect(normalizeWheelScrollDelta(0, 0, 900)).toBe(0);
   });
 
   it("requests the same escape close reason as the macOS reference shell", async () => {

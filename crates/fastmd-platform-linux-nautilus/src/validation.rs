@@ -84,6 +84,21 @@ pub fn crate_slice_validation_notes() -> Vec<ValidationNote> {
             note: "Containing-monitor and nearest-monitor selection are implemented, and the shared Tauri shell now consumes Linux monitor work_area rectangles in desktop-space coordinates; real GNOME monitor snapshots still need Ubuntu validation.",
         },
         ValidationNote {
+            item: "Implement the same hot interaction-surface behavior as macOS",
+            status: ValidationStatus::ImplementedInSlice,
+            note: "The shared Tauri shell reveals the preview with window focus, the shared frontend keeps the shell root focusable after re-renders, and Linux parity can now rely on one hot surface instead of pointer re-entry.",
+        },
+        ValidationNote {
+            item: "Keep the preview keyboard-hot without forcing the user to re-hover inside the preview",
+            status: ValidationStatus::ImplementedInSlice,
+            note: "Linux desktop shells now combine Tauri reveal-focus behavior with shared-frontend shell focus retention so width, background, paging, and close keys stay active without an extra re-hover step.",
+        },
+        ValidationNote {
+            item: "Implement the same mouse-wheel and touchpad scrolling behavior as macOS",
+            status: ValidationStatus::ImplementedInSlice,
+            note: "The shared frontend now normalizes wheel deltas into the same direct preview-scroll path used by the macOS reference instead of depending on browser-default scrolling behavior.",
+        },
+        ValidationNote {
             item: "Implement preview opening, rendering, editing, and close behavior parity",
             status: ValidationStatus::BlockedByLowerLayers,
             note: "Shared shell parity now covers width tiers, work-area-based 4:3 placement, hint-chip chrome, Tab toggle, paged scrolling, and Escape close; hover-driven opening, edit persistence, and host-driven close paths still depend on shared-core and live Nautilus wiring.",

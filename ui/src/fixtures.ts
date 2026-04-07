@@ -42,6 +42,7 @@ export const demoBootstrapPayload: BootstrapPayload = {
     globalShortcutRegistered: false,
     closeOnBlurEnabled: false,
     canPersistPreviewEdits: false,
+    hotInteractionSurface: null,
     linuxProbePlans: null,
     linuxPreviewPlacement: null,
     linuxRuntimeDiagnostics: null,

@@ -639,10 +639,10 @@ Checklist reset rule:
 - [x] Reduce size only when the requested 4:3 tier truly cannot fit the current monitor work area
 - [x] Implement the same compact hint-chip behavior as macOS
 - [x] Keep the Ubuntu preview chrome free of Linux-only helper text that would diverge from macOS
-- [ ] Implement the same hot interaction-surface behavior as macOS
-- [ ] Keep the preview keyboard-hot without forcing the user to re-hover inside the preview
+- [x] Implement the same hot interaction-surface behavior as macOS
+- [x] Keep the preview keyboard-hot without forcing the user to re-hover inside the preview
 - [x] Implement the same `Tab` background toggle behavior as macOS
-- [ ] Implement the same mouse-wheel and touchpad scrolling behavior as macOS
+- [x] Implement the same mouse-wheel and touchpad scrolling behavior as macOS
 - [x] Implement the same `Space`, `Shift+Space`, `Page Up`, and `Page Down` paging behavior as macOS
 - [x] Implement the same sticky eased paging motion as macOS
 - [ ] Implement the same inline block editing entry rule as macOS
