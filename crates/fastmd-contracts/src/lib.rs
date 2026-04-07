@@ -1309,6 +1309,22 @@ mod tests {
     }
 
     #[test]
+    fn hint_chip_and_post_open_input_contracts_stay_locked_to_macos_reference() {
+        let reference = MACOS_REFERENCE_BEHAVIOR;
+
+        assert!(reference.hint_chip.collapsed_into_single_chip);
+        assert_eq!(reference.hint_chip.background_icon, "◐");
+        assert_eq!(reference.hint_chip.paging_icon, "⇵");
+        assert!(reference.interaction.preview_becomes_hot_on_open);
+        assert!(reference.interaction.keeps_hot_surface_while_visible);
+        assert!(reference.interaction.supports_background_toggle);
+        assert!(reference.interaction.supports_scroll_wheel_and_touchpad);
+        assert!(reference.interaction.supports_space_and_page_keys);
+        assert!(reference.background_toggle.requires_hot_surface);
+        assert!(reference.paging.requires_hot_surface);
+    }
+
+    #[test]
     fn hover_resolution_scope_contract_rejects_nearby_fallbacks() {
         let reference = MACOS_REFERENCE_BEHAVIOR.hover_resolution;
 

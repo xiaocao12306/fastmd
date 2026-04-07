@@ -546,6 +546,23 @@ mod tests {
     }
 
     #[test]
+    fn shared_frontend_shell_keeps_macos_hint_chip_copy_without_windows_specific_text() {
+        let source =
+            fs::read_to_string(shared_frontend_app_path()).expect("ui app.ts should be readable");
+        let chip = hint_chip_contract(0);
+
+        assert!(source.contains(MACOS_REFERENCE_BEHAVIOR.rendering.chrome.toolbar_eyebrow));
+        assert!(source.contains("class=\"hint-chip\""));
+        assert!(source.contains("class=\"hint-separator\""));
+        assert!(source.contains(&chip.width_label));
+        assert!(source.contains(&chip.background_label));
+        assert!(source.contains(&chip.paging_label));
+        assert!(!source.contains("Windows"));
+        assert!(!source.contains("Explorer"));
+        assert!(!source.contains("Finder"));
+    }
+
+    #[test]
     fn rich_preview_fixture_covers_the_runtime_features_claimed_by_shared_render_contract() {
         let fixture = fs::read_to_string(rich_preview_fixture_path())
             .expect("rich-preview fixture should be readable");
@@ -579,6 +596,10 @@ mod tests {
     fn markdown_renderer_swift_path() -> PathBuf {
         PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("../../apps/macos/Sources/FastMD/MarkdownRenderer.swift")
+    }
+
+    fn shared_frontend_app_path() -> PathBuf {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../ui/src/app.ts")
     }
 
     fn rich_preview_fixture_path() -> PathBuf {

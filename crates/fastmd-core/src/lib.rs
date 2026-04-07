@@ -1000,6 +1000,65 @@ mod tests {
     }
 
     #[test]
+    fn windows_reference_preview_opens_hot_and_accepts_keyboard_and_scroll_without_rehover() {
+        let mut engine = CoreEngine::new();
+
+        engine.observe_hover(
+            0,
+            explorer_surface(true, "hwnd:0x10001"),
+            Some(hovered_markdown("/Users/example/Docs/a.md", 180.0, 780.0)),
+            Some(monitor()),
+        );
+        let opened = engine.observe_hover(
+            1_000,
+            explorer_surface(true, "hwnd:0x10001"),
+            Some(hovered_markdown("/Users/example/Docs/a.md", 180.0, 780.0)),
+            None,
+        );
+
+        assert!(matches!(
+            opened.as_slice(),
+            [AppEvent::PreviewWindowRequested { .. }]
+        ));
+        assert!(engine.state().interaction_hot);
+
+        assert_eq!(
+            engine.dispatch_command(AppCommand::ToggleBackgroundMode, &[]),
+            vec![AppEvent::BackgroundModeChanged {
+                background_mode: BackgroundMode::Black,
+            }]
+        );
+        assert_eq!(
+            engine.dispatch_command(
+                AppCommand::ScrollPreview {
+                    raw_delta_y: -8.4,
+                    precise: false,
+                },
+                &[],
+            ),
+            vec![AppEvent::ScrollApplied { delta_y: 84.0 }]
+        );
+
+        let paging = engine.dispatch_command(
+            AppCommand::PagePreview {
+                input: PageInput::PageDown,
+            },
+            &[],
+        );
+        match paging.as_slice() {
+            [AppEvent::PageMotionRequested { motion }] => {
+                assert_eq!(motion.direction, PageDirection::Forward);
+                assert_eq!(motion.page_fraction, 0.92);
+                assert_eq!(motion.overshoot_factor, 0.06);
+                assert_eq!(motion.max_overshoot_px, 34.0);
+                assert_eq!(motion.first_segment_ms, 520);
+                assert_eq!(motion.settle_segment_ms, 180);
+            }
+            other => panic!("unexpected paging events: {other:?}"),
+        }
+    }
+
+    #[test]
     fn app_command_dispatch_routes_shared_width_paging_and_close_contracts() {
         let mut engine = CoreEngine::new();
 

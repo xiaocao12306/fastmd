@@ -218,7 +218,10 @@ mod tests {
     use std::path::{Path, PathBuf};
     use std::time::{SystemTime, UNIX_EPOCH};
 
-    use fastmd_contracts::{AppCommand, AppEvent, CloseReason};
+    use fastmd_contracts::{
+        AppCommand, AppEvent, BackgroundMode, CloseReason, MACOS_REFERENCE_BEHAVIOR, PageDirection,
+        PageInput,
+    };
     use serde_json::json;
 
     use super::WindowsPreviewLoop;
@@ -366,6 +369,35 @@ mod tests {
             ]
         })
         .to_string()
+    }
+
+    fn open_visible_preview(preview: &mut WindowsPreviewLoop, path: &Path) {
+        assert!(
+            preview
+                .observe_probe_outputs(
+                    0,
+                    &explorer_frontmost_json(),
+                    Some(&hovered_item_json(path, "exact-item-under-pointer")),
+                    Some(&coordinate_json(320.0, 180.0)),
+                )
+                .expect("probe outputs should classify")
+                .is_empty()
+        );
+
+        let opened = preview
+            .observe_probe_outputs(
+                1_000,
+                &explorer_frontmost_json(),
+                Some(&hovered_item_json(path, "exact-item-under-pointer")),
+                Some(&coordinate_json(320.0, 180.0)),
+            )
+            .expect("probe outputs should classify");
+
+        assert!(matches!(
+            opened.as_slice(),
+            [AppEvent::PreviewWindowRequested { .. }]
+        ));
+        assert!(preview.state().visibility.visible);
     }
 
     #[test]
@@ -595,6 +627,125 @@ mod tests {
             }]
         );
         assert!(!preview.state().visibility.visible);
+    }
+
+    #[test]
+    fn preview_opens_hot_so_windows_tab_toggle_needs_no_rehover() {
+        let fixture = TempFixture::new();
+        let path = fixture.write_file("notes.md", "# hello");
+        let mut preview = WindowsPreviewLoop::new();
+
+        open_visible_preview(&mut preview, &path);
+
+        assert!(preview.state().interaction_hot);
+        let events = preview.dispatch_command(AppCommand::ToggleBackgroundMode, &[]);
+        assert_eq!(
+            events,
+            vec![AppEvent::BackgroundModeChanged {
+                background_mode: BackgroundMode::Black,
+            }]
+        );
+        assert_eq!(preview.state().background_mode, BackgroundMode::Black);
+        assert_eq!(
+            preview
+                .state()
+                .visibility
+                .last_request
+                .as_ref()
+                .map(|request| request.background_mode),
+            Some(BackgroundMode::Black)
+        );
+    }
+
+    #[test]
+    fn scroll_and_paging_commands_match_macos_without_rehover_inside_preview() {
+        let fixture = TempFixture::new();
+        let path = fixture.write_file("notes.md", "# hello");
+        let mut preview = WindowsPreviewLoop::new();
+
+        open_visible_preview(&mut preview, &path);
+
+        assert_eq!(
+            preview.dispatch_command(
+                AppCommand::ScrollPreview {
+                    raw_delta_y: -84.0,
+                    precise: true,
+                },
+                &[],
+            ),
+            vec![AppEvent::ScrollApplied { delta_y: 84.0 }]
+        );
+        assert_eq!(
+            preview.dispatch_command(
+                AppCommand::ScrollPreview {
+                    raw_delta_y: -8.4,
+                    precise: false,
+                },
+                &[],
+            ),
+            vec![AppEvent::ScrollApplied { delta_y: 84.0 }]
+        );
+
+        for (input, direction) in [
+            (PageInput::Space, PageDirection::Forward),
+            (PageInput::PageDown, PageDirection::Forward),
+            (PageInput::ShiftSpace, PageDirection::Backward),
+            (PageInput::PageUp, PageDirection::Backward),
+        ] {
+            let events = preview.dispatch_command(AppCommand::PagePreview { input }, &[]);
+            match events.as_slice() {
+                [AppEvent::PageMotionRequested { motion }] => {
+                    assert_eq!(motion.direction, direction);
+                    assert_eq!(
+                        motion.page_fraction,
+                        MACOS_REFERENCE_BEHAVIOR.paging.page_fraction
+                    );
+                    assert_eq!(
+                        motion.overshoot_factor,
+                        MACOS_REFERENCE_BEHAVIOR.paging.overshoot_factor
+                    );
+                    assert_eq!(
+                        motion.max_overshoot_px,
+                        MACOS_REFERENCE_BEHAVIOR.paging.max_overshoot_px
+                    );
+                    assert_eq!(
+                        motion.first_segment_ms,
+                        MACOS_REFERENCE_BEHAVIOR.paging.first_segment_ms
+                    );
+                    assert_eq!(
+                        motion.settle_segment_ms,
+                        MACOS_REFERENCE_BEHAVIOR.paging.settle_segment_ms
+                    );
+                }
+                other => panic!("unexpected paging events: {other:?}"),
+            }
+        }
+    }
+
+    #[test]
+    fn outside_click_and_escape_close_match_macos_on_windows() {
+        let fixture = TempFixture::new();
+        let path = fixture.write_file("notes.md", "# hello");
+
+        let mut outside_click_preview = WindowsPreviewLoop::new();
+        open_visible_preview(&mut outside_click_preview, &path);
+        assert_eq!(
+            outside_click_preview.dispatch_command(AppCommand::OutsideClick, &[]),
+            vec![AppEvent::PreviewWindowHidden {
+                reason: CloseReason::OutsideClick,
+            }]
+        );
+        assert!(!outside_click_preview.state().visibility.visible);
+
+        let mut escape_preview = WindowsPreviewLoop::new();
+        open_visible_preview(&mut escape_preview, &path);
+        assert_eq!(
+            escape_preview.dispatch_command(AppCommand::Escape, &[]),
+            vec![AppEvent::PreviewWindowHidden {
+                reason: CloseReason::Escape,
+            }]
+        );
+        assert!(!escape_preview.state().visibility.visible);
     }
 
     #[test]

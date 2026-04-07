@@ -2,8 +2,18 @@
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum FeatureStatus {
     ImplementedInThisCrate,
+    ImplementedViaSharedContractsCoreRender,
     PendingAdapterWork,
     PendingSharedCore,
+}
+
+impl FeatureStatus {
+    pub fn is_complete(self) -> bool {
+        matches!(
+            self,
+            Self::ImplementedInThisCrate | Self::ImplementedViaSharedContractsCoreRender
+        )
+    }
 }
 
 /// One Windows parity requirement and the honest status of this crate against it.
@@ -22,7 +32,7 @@ pub struct AdapterValidationManifest {
     pub features: &'static [AdapterValidationFeature],
 }
 
-pub static WINDOWS_VALIDATION_FEATURES: [AdapterValidationFeature; 15] = [
+pub static WINDOWS_VALIDATION_FEATURES: [AdapterValidationFeature; 26] = [
     AdapterValidationFeature {
         blueprint_item: "Restrict Windows support target to Windows 11 plus Explorer only",
         status: FeatureStatus::ImplementedInThisCrate,
@@ -89,9 +99,64 @@ pub static WINDOWS_VALIDATION_FEATURES: [AdapterValidationFeature; 15] = [
         evidence: "WindowsPreviewLoop now dispatches shared AppCommand::AdjustWidthTier into fastmd_core, and probe-driven tests prove that 560/960/1440/1920 tier requests preserve 4:3 placement, reposition before shrinking on roomy work areas, and shrink only when the requested tier cannot fit the selected Windows work area.",
     },
     AdapterValidationFeature {
-        blueprint_item: "Implement background toggle, paging, editing, outside-click close, Escape close, and runtime shell parity through shared contracts/core",
+        blueprint_item: "Implement the same compact hint-chip behavior as macOS",
+        status: FeatureStatus::ImplementedViaSharedContractsCoreRender,
+        evidence: "fastmd-render locks the single-chip copy to MACOS_REFERENCE_BEHAVIOR, and crate-owned tests validate that the shared frontend template keeps the same compact width / Tab / paging chip for Windows without diverging labels.",
+    },
+    AdapterValidationFeature {
+        blueprint_item: "Keep the Windows preview chrome free of Windows-only helper text that would diverge from macOS",
+        status: FeatureStatus::ImplementedViaSharedContractsCoreRender,
+        evidence: "The shared preview shell template keeps the macOS eyebrow and hint-chip copy and crate-owned validation asserts that the shell source does not introduce Windows-, Explorer-, or Finder-specific helper text into the preview chrome.",
+    },
+    AdapterValidationFeature {
+        blueprint_item: "Implement the same hot interaction-surface behavior as macOS",
+        status: FeatureStatus::ImplementedViaSharedContractsCoreRender,
+        evidence: "Shared contracts require the preview to become hot on open, and the Windows preview loop now proves that opened previews immediately accept hot-surface commands without any extra host-specific priming.",
+    },
+    AdapterValidationFeature {
+        blueprint_item: "Keep the preview keyboard-hot without forcing the user to re-hover inside the preview",
+        status: FeatureStatus::ImplementedViaSharedContractsCoreRender,
+        evidence: "WindowsPreviewLoop tests now open a preview once, then immediately dispatch Tab and paging commands through the shared core without any follow-up re-hover or SetInteractionHot call.",
+    },
+    AdapterValidationFeature {
+        blueprint_item: "Implement the same `Tab` background toggle behavior as macOS",
+        status: FeatureStatus::ImplementedViaSharedContractsCoreRender,
+        evidence: "The Windows preview loop now validates that AppCommand::ToggleBackgroundMode flips the preview from white to black immediately after open and updates the tracked preview request exactly through the shared core contract.",
+    },
+    AdapterValidationFeature {
+        blueprint_item: "Implement the same mouse-wheel and touchpad scrolling behavior as macOS",
+        status: FeatureStatus::ImplementedViaSharedContractsCoreRender,
+        evidence: "WindowsPreviewLoop tests now cover both precise and non-precise scroll inputs and prove they normalize to the same 84 px shared-core scroll motion the macOS reference uses.",
+    },
+    AdapterValidationFeature {
+        blueprint_item: "Implement the same `Space`, `Shift+Space`, `Page Up`, and `Page Down` paging behavior as macOS",
+        status: FeatureStatus::ImplementedViaSharedContractsCoreRender,
+        evidence: "The Windows preview loop now dispatches all four paging inputs through shared AppCommand::PagePreview and validates the same forward/backward semantics the macOS reference contract requires.",
+    },
+    AdapterValidationFeature {
+        blueprint_item: "Implement the same sticky eased paging motion as macOS",
+        status: FeatureStatus::ImplementedViaSharedContractsCoreRender,
+        evidence: "Windows paging tests now assert the macOS-matching shared-core page fraction, overshoot factor, overshoot cap, and two-stage easing durations for every supported paging key.",
+    },
+    AdapterValidationFeature {
+        blueprint_item: "Implement the same close-on-outside-click behavior as macOS",
+        status: FeatureStatus::ImplementedViaSharedContractsCoreRender,
+        evidence: "WindowsPreviewLoop now validates that AppCommand::OutsideClick hides an open preview with CloseReason::OutsideClick through the shared close policy.",
+    },
+    AdapterValidationFeature {
+        blueprint_item: "Implement the same close-on-app-switch behavior as macOS",
+        status: FeatureStatus::ImplementedViaSharedContractsCoreRender,
+        evidence: "WindowsPreviewLoop already proves that losing frontmost Explorer state drives the shared core to hide the preview with CloseReason::AppSwitch.",
+    },
+    AdapterValidationFeature {
+        blueprint_item: "Implement the same close-on-Escape behavior as macOS",
+        status: FeatureStatus::ImplementedViaSharedContractsCoreRender,
+        evidence: "WindowsPreviewLoop now validates that AppCommand::Escape hides an open preview with CloseReason::Escape through the shared close policy.",
+    },
+    AdapterValidationFeature {
+        blueprint_item: "Implement the same inline block editing entry rule, edit source mapping behavior, edit save and cancel behavior, and edit-mode lock behavior as macOS",
         status: FeatureStatus::PendingAdapterWork,
-        evidence: "Shared contracts/core already encode these macOS semantics, but the Windows lane still needs crate-local end-to-end wiring and Windows-specific validation evidence for the remaining post-open interaction paths.",
+        evidence: "Shared contracts/core already define the edit lifecycle, but the Windows lane still needs crate-local end-to-end wiring and Windows-specific validation evidence for edit entry, block mapping, save/cancel flow, and lock semantics.",
     },
     AdapterValidationFeature {
         blueprint_item: "Implement the same runtime diagnostics coverage as macOS where host APIs permit",
@@ -121,16 +186,30 @@ mod tests {
     }
 
     #[test]
-    fn validation_manifest_marks_only_the_completed_slice_as_implemented() {
+    fn validation_manifest_separates_direct_shared_and_pending_windows_features() {
         let manifest = windows_validation_manifest();
 
-        let implemented = manifest
+        let implemented_in_crate = manifest
             .features
             .iter()
             .filter(|feature| feature.status == FeatureStatus::ImplementedInThisCrate)
             .count();
+        let implemented_via_shared = manifest
+            .features
+            .iter()
+            .filter(|feature| {
+                feature.status == FeatureStatus::ImplementedViaSharedContractsCoreRender
+            })
+            .count();
+        let completed = manifest
+            .features
+            .iter()
+            .filter(|feature| feature.status.is_complete())
+            .count();
 
-        assert_eq!(implemented, 13);
+        assert_eq!(implemented_in_crate, 13);
+        assert_eq!(implemented_via_shared, 11);
+        assert_eq!(completed, 24);
         assert!(
             manifest
                 .features
