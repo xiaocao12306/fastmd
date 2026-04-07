@@ -70,8 +70,8 @@ pub fn crate_slice_validation_notes() -> Vec<ValidationNote> {
         },
         ValidationNote {
             item: "Implement Ubuntu hovered-item resolution so the actual hovered .md item is resolved rather than a nearby or first visible candidate",
-            status: ValidationStatus::NeedsUbuntuHostValidation,
-            note: "The acceptance rules are implemented and tested; live Nautilus probe wiring remains to be validated.",
+            status: ValidationStatus::ImplementedInSlice,
+            note: "The Nautilus hover pipeline now normalizes raw probe observations into exact-item or hovered-row candidates, reconstructs file-system paths from direct metadata or hovered-row context, and rejects nearby / first-visible fallbacks before preview open.",
         },
         ValidationNote {
             item: "Identify the authoritative Ubuntu 24.04 GNOME host API stack for hovered Nautilus item resolution",
@@ -79,9 +79,34 @@ pub fn crate_slice_validation_notes() -> Vec<ValidationNote> {
             note: "Wayland and X11 now explicitly name AT-SPI Component.GetAccessibleAtPoint plus Accessible children, role, attributes, and text queries within Nautilus GTK list roles as the hover-resolution stack.",
         },
         ValidationNote {
+            item: "Resolve the exact hovered Nautilus item rather than a nearby candidate or first visible candidate",
+            status: ValidationStatus::ImplementedInSlice,
+            note: "The Nautilus hover classifier now accepts only exact-item-under-pointer or hovered-row-descendant evidence and rejects nearby or first-visible scopes before preview open.",
+        },
+        ValidationNote {
+            item: "Preserve the macOS rule that three or more visible Markdown files must still resolve the actually hovered item",
+            status: ValidationStatus::ImplementedInSlice,
+            note: "Hovered-row classification now keeps the hovered row identity and reconstructs that specific row's path even when multiple visible Markdown peers are present, rather than falling back to the first visible candidate.",
+        },
+        ValidationNote {
+            item: "Reconstruct or retrieve an absolute filesystem path for the hovered Nautilus item",
+            status: ValidationStatus::ImplementedInSlice,
+            note: "The pipeline now accepts direct path-like AT-SPI metadata when available and otherwise reconstructs a file-system path from the hovered row label plus the front Nautilus directory context.",
+        },
+        ValidationNote {
+            item: "Validate that the hovered-item path exists and points to a regular file before preview opens",
+            status: ValidationStatus::ImplementedInSlice,
+            note: "The Linux markdown filter now rejects relative paths, missing paths, directories, unsupported entities, and non-Markdown extensions before the adapter returns a resolved hover.",
+        },
+        ValidationNote {
             item: "Implement Ubuntu multi-monitor coordinate handling with the same placement semantics as macOS",
             status: ValidationStatus::NeedsUbuntuHostValidation,
             note: "Containing-monitor and nearest-monitor selection are implemented, and the shared Tauri shell now consumes Linux monitor work_area rectangles in desktop-space coordinates; real GNOME monitor snapshots still need Ubuntu validation.",
+        },
+        ValidationNote {
+            item: "Wire the current adapter-level rejection logic into the real Nautilus hovered-item pipeline",
+            status: ValidationStatus::ImplementedInSlice,
+            note: "The Nautilus adapter now classifies raw hover observations through the same Linux markdown filter used for path acceptance, so hover evidence and file acceptance run in one pipeline.",
         },
         ValidationNote {
             item: "Implement the same hot interaction-surface behavior as macOS",

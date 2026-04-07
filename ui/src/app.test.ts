@@ -221,6 +221,9 @@ describe("FastMD shared preview shell", () => {
             status: "pending-live-probe",
             displayServer: "wayland",
             apiStack: "pointer=AT-SPI Component.GetAccessibleAtPoint(screen)",
+            itemName: "third.md",
+            pathSource: "hovered-row-label+parent-directory",
+            visibleMarkdownPeerCount: 3,
             note: "Wayland hovered-item diagnostics are emitted now.",
           },
           monitorSelection: {
@@ -260,6 +263,11 @@ describe("FastMD shared preview shell", () => {
     expect(shell?.dataset.linuxHoveredItemApiStack).toContain(
       "AT-SPI Component.GetAccessibleAtPoint(screen)",
     );
+    expect(shell?.dataset.linuxHoveredItemPathSource).toBe(
+      "hovered-row-label+parent-directory",
+    );
+    expect(shell?.dataset.linuxHoveredItemItemName).toBe("third.md");
+    expect(shell?.dataset.linuxHoveredItemVisibleMarkdownPeerCount).toBe("3");
     expect(shell?.dataset.linuxMonitorSelectionMonitorId).toBe("monitor-1");
     expect(shell?.dataset.linuxPreviewPlacementGeometry).toBe(
       "x=1942,y=168,width=960,height=720",

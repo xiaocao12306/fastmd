@@ -81,7 +81,10 @@ export interface LinuxHoveredItemDiagnostic {
   backend?: string | null;
   resolutionScope?: string | null;
   entityKind?: string | null;
+  itemName?: string | null;
   path?: string | null;
+  pathSource?: string | null;
+  visibleMarkdownPeerCount?: number | null;
   accepted?: boolean | null;
   rejection?: string | null;
   note: string;

@@ -124,3 +124,9 @@ export function readLinuxRuntimeDiagnostics(
 ): LinuxRuntimeDiagnostics | null {
   return capabilities.linuxRuntimeDiagnostics ?? null;
 }
+
+export function readLinuxHoveredItemDiagnostic(
+  capabilities: HostCapabilities,
+): LinuxRuntimeDiagnostics["hoveredItem"] | null {
+  return capabilities.linuxRuntimeDiagnostics?.hoveredItem ?? null;
+}

@@ -1,15 +1,15 @@
-use std::ffi::OsStr;
-use std::fs;
 use std::path::PathBuf;
 
 use crate::error::AdapterError;
+use crate::filter::LinuxMarkdownFilter;
 use crate::frontmost::{
     api_stack_for_display_server, resolve_frontmost_surface, FrontmostNautilusSurface,
     FrontmostSurfaceRejection, NautilusFrontmostApiStack,
 };
 use crate::geometry::{Monitor, ScreenPoint};
+use crate::hover::{classify_hovered_item_snapshot, HoveredItemProbeOutcome, HoveredItemSnapshot};
 use crate::probes::{
-    FrontmostAppSnapshot, HoveredEntityKind, HoveredItemSnapshot, NautilusProbeSuite,
+    FrontmostAppSnapshot, NautilusProbeSuite,
 };
 use crate::target::{supported_surface_label, SessionContext};
 
@@ -43,12 +43,16 @@ pub struct ResolvedHover {
 #[derive(Debug, Clone)]
 pub struct NautilusPlatformAdapter<P> {
     probes: P,
+    filter: LinuxMarkdownFilter,
 }
 
 impl<P> NautilusPlatformAdapter<P> {
     /// Creates a new adapter instance.
     pub fn new(probes: P) -> Self {
-        Self { probes }
+        Self {
+            probes,
+            filter: LinuxMarkdownFilter,
+        }
     }
 
     /// Returns the Stage 2 target label encoded by this crate.
@@ -104,34 +108,22 @@ where
             return Ok(None);
         };
 
-        if !snapshot.resolution_scope.supports_macos_parity() {
-            return Ok(None);
-        }
-
-        if snapshot.entity_kind != HoveredEntityKind::File {
-            return Ok(None);
-        }
-
-        if !snapshot.path.is_absolute() {
-            return Ok(None);
-        }
-
-        if !is_markdown_path(&snapshot.path) {
-            return Ok(None);
-        }
-
-        let Ok(metadata) = fs::metadata(&snapshot.path) else {
+        let outcome = self.classify_hovered_item(snapshot);
+        let Some(accepted) = outcome.accepted else {
             return Ok(None);
         };
-
-        if !metadata.is_file() {
-            return Ok(None);
-        }
+        let snapshot = outcome.snapshot;
 
         Ok(Some(ResolvedHover {
-            path: snapshot.path.clone(),
+            path: accepted.path().to_path_buf(),
             snapshot,
         }))
+    }
+
+    /// Classifies one normalized Nautilus hovered-item snapshot through the
+    /// parity-preserving evidence gate and local-Markdown acceptance filter.
+    pub fn classify_hovered_item(&self, snapshot: HoveredItemSnapshot) -> HoveredItemProbeOutcome {
+        classify_hovered_item_snapshot(snapshot, &self.filter)
     }
 
     /// Returns the monitor whose work area should be used for a given desktop
@@ -158,13 +150,6 @@ where
     }
 }
 
-fn is_markdown_path(path: &PathBuf) -> bool {
-    path.extension()
-        .and_then(OsStr::to_str)
-        .map(|extension| extension.eq_ignore_ascii_case("md"))
-        .unwrap_or(false)
-}
-
 #[cfg(test)]
 mod tests {
     use std::fs;
@@ -172,10 +157,13 @@ mod tests {
     use std::time::{SystemTime, UNIX_EPOCH};
 
     use crate::backends;
+    use crate::filter::{HoverCandidateRejection, HoverCandidateSource};
     use crate::geometry::{MonitorLayout, ScreenRect};
+    use crate::hover::{
+        build_hovered_item_snapshot, HoveredItemObservation, HoveredItemResolutionRejection,
+    };
     use crate::probes::{
-        FrontmostAppProbe, FrontmostAppSnapshot, HoverResolutionScope, HoveredEntityKind,
-        HoveredItemProbe, HoveredItemSnapshot, MonitorProbe, SessionProbe,
+        FrontmostAppProbe, FrontmostAppSnapshot, HoveredItemProbe, MonitorProbe, SessionProbe,
     };
     use crate::target::{DisplayServerKind, SessionContext};
 
@@ -305,12 +293,17 @@ mod tests {
 
         let adapter = NautilusPlatformAdapter::new(base_probes(
             nautilus_frontmost(),
-            Some(HoveredItemSnapshot {
-                path: file.clone(),
+            Some(build_hovered_item_snapshot(HoveredItemObservation {
                 entity_kind: HoveredEntityKind::File,
                 resolution_scope: HoverResolutionScope::ExactItemUnderPointer,
-                backend: "test",
-            }),
+                backend: "test".to_string(),
+                absolute_path: Some(file.clone()),
+                parent_directory: None,
+                item_name: Some("exact.md".to_string()),
+                path_source: HoverCandidateSource::ValidationFixture,
+                visible_markdown_peer_count: Some(1),
+                unsupported_description: None,
+            })),
         ));
 
         let resolved = adapter
@@ -330,12 +323,17 @@ mod tests {
 
         let adapter = NautilusPlatformAdapter::new(base_probes(
             nautilus_frontmost(),
-            Some(HoveredItemSnapshot {
-                path: file.clone(),
+            Some(build_hovered_item_snapshot(HoveredItemObservation {
                 entity_kind: HoveredEntityKind::File,
                 resolution_scope: HoverResolutionScope::HoveredRowDescendant,
-                backend: "test",
-            }),
+                backend: "test".to_string(),
+                absolute_path: None,
+                parent_directory: file.parent().map(Path::to_path_buf),
+                item_name: file.file_name().and_then(|value| value.to_str()).map(ToOwned::to_owned),
+                path_source: HoverCandidateSource::HoveredRowLabelWithParentDirectory,
+                visible_markdown_peer_count: Some(3),
+                unsupported_description: None,
+            })),
         ));
 
         assert!(adapter
@@ -353,12 +351,17 @@ mod tests {
 
         let nearby = NautilusPlatformAdapter::new(base_probes(
             nautilus_frontmost(),
-            Some(HoveredItemSnapshot {
-                path: nearby_file.clone(),
+            Some(build_hovered_item_snapshot(HoveredItemObservation {
                 entity_kind: HoveredEntityKind::File,
                 resolution_scope: HoverResolutionScope::NearbyCandidate,
-                backend: "test",
-            }),
+                backend: "test".to_string(),
+                absolute_path: Some(nearby_file.clone()),
+                parent_directory: None,
+                item_name: Some("nearby.md".to_string()),
+                path_source: HoverCandidateSource::ValidationFixture,
+                visible_markdown_peer_count: Some(4),
+                unsupported_description: None,
+            })),
         ));
         assert!(nearby
             .resolve_hovered_markdown(ScreenPoint { x: 1.0, y: 1.0 })
@@ -367,12 +370,17 @@ mod tests {
 
         let first_visible = NautilusPlatformAdapter::new(base_probes(
             nautilus_frontmost(),
-            Some(HoveredItemSnapshot {
-                path: nearby_file.clone(),
+            Some(build_hovered_item_snapshot(HoveredItemObservation {
                 entity_kind: HoveredEntityKind::File,
                 resolution_scope: HoverResolutionScope::FirstVisibleItem,
-                backend: "test",
-            }),
+                backend: "test".to_string(),
+                absolute_path: Some(nearby_file.clone()),
+                parent_directory: None,
+                item_name: Some("nearby.md".to_string()),
+                path_source: HoverCandidateSource::ValidationFixture,
+                visible_markdown_peer_count: Some(4),
+                unsupported_description: None,
+            })),
         ));
         assert!(first_visible
             .resolve_hovered_markdown(ScreenPoint { x: 1.0, y: 1.0 })
@@ -389,12 +397,17 @@ mod tests {
 
         let non_markdown = NautilusPlatformAdapter::new(base_probes(
             nautilus_frontmost(),
-            Some(HoveredItemSnapshot {
-                path: txt_file.clone(),
+            Some(build_hovered_item_snapshot(HoveredItemObservation {
                 entity_kind: HoveredEntityKind::File,
                 resolution_scope: HoverResolutionScope::ExactItemUnderPointer,
-                backend: "test",
-            }),
+                backend: "test".to_string(),
+                absolute_path: Some(txt_file.clone()),
+                parent_directory: None,
+                item_name: Some("notes.txt".to_string()),
+                path_source: HoverCandidateSource::ValidationFixture,
+                visible_markdown_peer_count: Some(1),
+                unsupported_description: None,
+            })),
         ));
         assert!(non_markdown
             .resolve_hovered_markdown(ScreenPoint { x: 0.0, y: 0.0 })
@@ -404,12 +417,17 @@ mod tests {
         let directory = temp_directory("folder.md");
         let directory_probe = NautilusPlatformAdapter::new(base_probes(
             nautilus_frontmost(),
-            Some(HoveredItemSnapshot {
-                path: directory.clone(),
+            Some(build_hovered_item_snapshot(HoveredItemObservation {
                 entity_kind: HoveredEntityKind::Directory,
                 resolution_scope: HoverResolutionScope::ExactItemUnderPointer,
-                backend: "test",
-            }),
+                backend: "test".to_string(),
+                absolute_path: Some(directory.clone()),
+                parent_directory: None,
+                item_name: Some("folder.md".to_string()),
+                path_source: HoverCandidateSource::ValidationFixture,
+                visible_markdown_peer_count: Some(1),
+                unsupported_description: None,
+            })),
         ));
         assert!(directory_probe
             .resolve_hovered_markdown(ScreenPoint { x: 0.0, y: 0.0 })
@@ -418,6 +436,50 @@ mod tests {
 
         cleanup_path(&txt_file);
         cleanup_path(&directory);
+    }
+
+    #[test]
+    fn classify_hovered_item_wires_the_markdown_filter_into_the_nautilus_pipeline() {
+        let adapter = NautilusPlatformAdapter::new(base_probes(nautilus_frontmost(), None));
+        let missing = adapter.classify_hovered_item(build_hovered_item_snapshot(
+            HoveredItemObservation {
+                entity_kind: HoveredEntityKind::File,
+                resolution_scope: HoverResolutionScope::ExactItemUnderPointer,
+                backend: "test".to_string(),
+                absolute_path: Some(temp_path("missing.md")),
+                parent_directory: None,
+                item_name: Some("missing.md".to_string()),
+                path_source: HoverCandidateSource::AtspiPathAttribute,
+                visible_markdown_peer_count: Some(2),
+                unsupported_description: None,
+            },
+        ));
+        assert!(matches!(
+            missing.rejection,
+            Some(HoveredItemResolutionRejection::CandidateRejected {
+                rejection: HoverCandidateRejection::MissingPath { .. }
+            })
+        ));
+
+        let unsupported = adapter.classify_hovered_item(build_hovered_item_snapshot(
+            HoveredItemObservation {
+                entity_kind: HoveredEntityKind::Unsupported,
+                resolution_scope: HoverResolutionScope::ExactItemUnderPointer,
+                backend: "test".to_string(),
+                absolute_path: None,
+                parent_directory: None,
+                item_name: None,
+                path_source: HoverCandidateSource::AtspiUriAttribute,
+                visible_markdown_peer_count: None,
+                unsupported_description: Some("hovered widget is not a file row".to_string()),
+            },
+        ));
+        assert!(matches!(
+            unsupported.rejection,
+            Some(HoveredItemResolutionRejection::CandidateRejected {
+                rejection: HoverCandidateRejection::UnsupportedItem { .. }
+            })
+        ));
     }
 
     #[test]

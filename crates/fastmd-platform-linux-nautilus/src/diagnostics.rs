@@ -38,10 +38,10 @@ pub fn frontmost_gate_pending_note(display_server: Option<DisplayServerKind>) ->
 pub fn hovered_item_pending_note(display_server: Option<DisplayServerKind>) -> &'static str {
     match display_server {
         Some(DisplayServerKind::Wayland) => {
-            "Wayland hovered-item diagnostics are emitted now, but live AT-SPI hit-testing still needs Ubuntu validation before exact hovered Markdown paths can be reported."
+            "Wayland hovered-item diagnostics are emitted now; exact-item and hovered-row path reconstruction plus markdown filtering are implemented, but live AT-SPI hit-testing still needs Ubuntu validation before accepted hovered Markdown paths can be reported."
         }
         Some(DisplayServerKind::X11) => {
-            "X11 hovered-item diagnostics are emitted now, but live AT-SPI hit-testing still needs Ubuntu validation before exact hovered Markdown paths can be reported."
+            "X11 hovered-item diagnostics are emitted now; exact-item and hovered-row path reconstruction plus markdown filtering are implemented, but live AT-SPI hit-testing still needs Ubuntu validation before accepted hovered Markdown paths can be reported."
         }
         None => {
             "Hovered-item diagnostics are emitted now, but the active Linux display server is unresolved until the host session identifies Wayland or X11."
@@ -66,5 +66,8 @@ mod tests {
         assert!(frontmost_gate_pending_note(Some(DisplayServerKind::X11)).contains("X11"));
         assert!(hovered_item_pending_note(Some(DisplayServerKind::Wayland)).contains("Wayland"));
         assert!(hovered_item_pending_note(Some(DisplayServerKind::X11)).contains("X11"));
+        assert!(hovered_item_pending_note(Some(DisplayServerKind::Wayland)).contains(
+            "path reconstruction plus markdown filtering"
+        ));
     }
 }

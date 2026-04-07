@@ -2,6 +2,7 @@ import {
   adjustWidthTier,
   bootstrapShell,
   readHotInteractionSurface,
+  readLinuxHoveredItemDiagnostic,
   readLinuxProbePlans,
   readLinuxRuntimeDiagnostics,
   listenToCloseRequests,
@@ -442,6 +443,9 @@ export class PreviewShellApp {
         "linuxHoveredItemStatus",
         "linuxHoveredItemApiStack",
         "linuxHoveredItemNote",
+        "linuxHoveredItemPathSource",
+        "linuxHoveredItemItemName",
+        "linuxHoveredItemVisibleMarkdownPeerCount",
         "linuxMonitorSelectionStatus",
         "linuxMonitorSelectionMonitorId",
         "linuxMonitorSelectionFallback",
@@ -464,9 +468,18 @@ export class PreviewShellApp {
     this.setShellData("linuxFrontmostGateStatus", diagnostics.frontmostGate.status);
     this.setShellData("linuxFrontmostGateApiStack", diagnostics.frontmostGate.apiStack);
     this.setShellData("linuxFrontmostGateNote", diagnostics.frontmostGate.note);
-    this.setShellData("linuxHoveredItemStatus", diagnostics.hoveredItem.status);
-    this.setShellData("linuxHoveredItemApiStack", diagnostics.hoveredItem.apiStack);
-    this.setShellData("linuxHoveredItemNote", diagnostics.hoveredItem.note);
+    const hoveredItem = readLinuxHoveredItemDiagnostic(this.hostCapabilities);
+    if (hoveredItem) {
+      this.setShellData("linuxHoveredItemStatus", hoveredItem.status);
+      this.setShellData("linuxHoveredItemApiStack", hoveredItem.apiStack);
+      this.setShellData("linuxHoveredItemNote", hoveredItem.note);
+      this.setShellData("linuxHoveredItemPathSource", hoveredItem.pathSource);
+      this.setShellData("linuxHoveredItemItemName", hoveredItem.itemName);
+      this.setShellData(
+        "linuxHoveredItemVisibleMarkdownPeerCount",
+        hoveredItem.visibleMarkdownPeerCount,
+      );
+    }
     this.setShellData("linuxMonitorSelectionStatus", diagnostics.monitorSelection.status);
     this.setShellData(
       "linuxMonitorSelectionMonitorId",

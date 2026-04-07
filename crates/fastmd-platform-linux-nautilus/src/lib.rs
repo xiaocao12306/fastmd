@@ -11,6 +11,7 @@ pub mod adapter;
 pub mod backends;
 pub mod diagnostics;
 pub mod error;
+pub mod filter;
 pub mod frontmost;
 pub mod geometry;
 pub mod hover;
@@ -27,6 +28,10 @@ pub use diagnostics::{
     PREVIEW_PLACEMENT_RUNTIME_NOTE,
 };
 pub use error::AdapterError;
+pub use filter::{
+    AcceptedMarkdownPath, HoverCandidate, HoverCandidateRejection, HoverCandidateSource,
+    LinuxMarkdownFilter,
+};
 pub use frontmost::{
     api_stack_for_display_server, resolve_frontmost_surface, FrontmostNautilusSurface,
     FrontmostSurfaceRejection, NautilusFrontmostApi, NautilusFrontmostApiStack,
@@ -34,12 +39,15 @@ pub use frontmost::{
 };
 pub use geometry::{Monitor, MonitorLayout, ScreenPoint, ScreenRect};
 pub use hover::{
-    hovered_item_api_stack_for_display_server, NautilusHoveredItemApi, NautilusHoveredItemApiStack,
+    build_hovered_item_snapshot, classify_hovered_item_snapshot,
+    hovered_item_api_stack_for_display_server, HoverResolutionScope, HoveredEntityKind,
+    HoveredItemObservation, HoveredItemProbeOutcome, HoveredItemResolutionRejection,
+    HoveredItemSnapshot, NautilusHoveredItemApi, NautilusHoveredItemApiStack,
     WAYLAND_HOVERED_ITEM_API_STACK, X11_HOVERED_ITEM_API_STACK,
 };
 pub use probes::{
-    FrontmostAppProbe, FrontmostAppSnapshot, HoverResolutionScope, HoveredEntityKind,
-    HoveredItemProbe, HoveredItemSnapshot, MonitorProbe, NautilusProbeSuite, SessionProbe,
+    FrontmostAppProbe, FrontmostAppSnapshot, HoveredItemProbe, MonitorProbe, NautilusProbeSuite,
+    SessionProbe,
 };
 pub use target::{
     supported_surface_label, DisplayServerKind, SessionContext, MACOS_REFERENCE_ROOT,

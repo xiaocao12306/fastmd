@@ -1,7 +1,6 @@
-use std::path::PathBuf;
-
 use crate::error::AdapterError;
 use crate::geometry::{MonitorLayout, ScreenPoint};
+use crate::hover::HoveredItemSnapshot;
 use crate::target::SessionContext;
 
 const NAUTILUS_IDENTIFIERS: &[&str] = &[
@@ -57,55 +56,6 @@ fn matches_known_identifier(value: Option<&str>) -> bool {
     NAUTILUS_IDENTIFIERS
         .iter()
         .any(|candidate| value.eq_ignore_ascii_case(candidate))
-}
-
-/// How strongly the backend can prove that a resolved item came from the
-/// pointer location.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum HoverResolutionScope {
-    /// The backend identified the item directly under the pointer.
-    ExactItemUnderPointer,
-    /// The backend identified the hovered row/container and then resolved the
-    /// item inside that hovered row. This matches the macOS fallback shape.
-    HoveredRowDescendant,
-    /// A nearby candidate was chosen heuristically.
-    NearbyCandidate,
-    /// The first visible item was used as a fallback.
-    FirstVisibleItem,
-}
-
-impl HoverResolutionScope {
-    /// Returns true only for scopes that preserve macOS parity expectations.
-    pub fn supports_macos_parity(self) -> bool {
-        matches!(
-            self,
-            Self::ExactItemUnderPointer | Self::HoveredRowDescendant
-        )
-    }
-}
-
-/// What kind of entity the backend believes it resolved.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum HoveredEntityKind {
-    /// Regular file.
-    File,
-    /// Directory or folder.
-    Directory,
-    /// Anything else that FastMD should reject.
-    Unsupported,
-}
-
-/// Host snapshot for the currently hovered file-manager item.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct HoveredItemSnapshot {
-    /// Absolute path observed by the backend.
-    pub path: PathBuf,
-    /// File, directory, or unsupported entity.
-    pub entity_kind: HoveredEntityKind,
-    /// Evidence quality for the resolved item.
-    pub resolution_scope: HoverResolutionScope,
-    /// Backend label for runtime diagnostics.
-    pub backend: &'static str,
 }
 
 /// Probe for the current session information.
