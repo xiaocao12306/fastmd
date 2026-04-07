@@ -4,6 +4,21 @@ export type RuntimeMode = "desktop" | "fallback";
 export type PermissionState = "granted" | "denied" | "unknown";
 export type FileManagerId = "finder" | "explorer" | "nautilus" | "unknown";
 export type CloseReason = "escape" | "focus-lost" | "outside-click" | "app-switch" | string;
+export type MarkdownFeature =
+  | "heading"
+  | "paragraph"
+  | "emphasis"
+  | "strong"
+  | "fenced-code"
+  | "syntax-highlighted-code"
+  | "blockquote"
+  | "task-list"
+  | "table"
+  | "mermaid"
+  | "math"
+  | "image"
+  | "footnote"
+  | "html-block";
 
 export interface ScreenPoint {
   x: number;
@@ -30,6 +45,7 @@ export interface HostCapabilities {
   closeOnBlurEnabled: boolean;
   canPersistPreviewEdits: boolean;
   hotInteractionSurface?: HotInteractionSurface | null;
+  sharedRenderingSurface?: SharedRenderingSurface | null;
   linuxProbePlans?: LinuxProbePlans | null;
   linuxPreviewPlacement?: LinuxPreviewPlacement | null;
   linuxRuntimeDiagnostics?: LinuxRuntimeDiagnostics | null;
@@ -39,6 +55,14 @@ export interface HotInteractionSurface {
   windowFocusStrategy: string;
   domFocusTarget: string;
   pointerScrollRouting: string;
+}
+
+export interface SharedRenderingSurface {
+  source: string;
+  macosReferenceRenderer: string;
+  supportedFeatures: MarkdownFeature[];
+  widthTiersPx: number[];
+  aspectRatio: number;
 }
 
 export interface LinuxProbePlans {

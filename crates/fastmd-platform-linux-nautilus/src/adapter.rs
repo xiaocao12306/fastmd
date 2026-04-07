@@ -8,9 +8,7 @@ use crate::frontmost::{
 };
 use crate::geometry::{Monitor, ScreenPoint};
 use crate::hover::{classify_hovered_item_snapshot, HoveredItemProbeOutcome, HoveredItemSnapshot};
-use crate::probes::{
-    FrontmostAppSnapshot, NautilusProbeSuite,
-};
+use crate::probes::{FrontmostAppSnapshot, NautilusProbeSuite};
 use crate::target::{supported_surface_label, SessionContext};
 
 /// Result of the frontmost-file-manager gating decision.
@@ -160,7 +158,8 @@ mod tests {
     use crate::filter::{HoverCandidateRejection, HoverCandidateSource};
     use crate::geometry::{MonitorLayout, ScreenRect};
     use crate::hover::{
-        build_hovered_item_snapshot, HoveredItemObservation, HoveredItemResolutionRejection,
+        build_hovered_item_snapshot, HoverResolutionScope, HoveredEntityKind,
+        HoveredItemObservation, HoveredItemResolutionRejection,
     };
     use crate::probes::{
         FrontmostAppProbe, FrontmostAppSnapshot, HoveredItemProbe, MonitorProbe, SessionProbe,
@@ -329,7 +328,10 @@ mod tests {
                 backend: "test".to_string(),
                 absolute_path: None,
                 parent_directory: file.parent().map(Path::to_path_buf),
-                item_name: file.file_name().and_then(|value| value.to_str()).map(ToOwned::to_owned),
+                item_name: file
+                    .file_name()
+                    .and_then(|value| value.to_str())
+                    .map(ToOwned::to_owned),
                 path_source: HoverCandidateSource::HoveredRowLabelWithParentDirectory,
                 visible_markdown_peer_count: Some(3),
                 unsupported_description: None,
@@ -441,8 +443,8 @@ mod tests {
     #[test]
     fn classify_hovered_item_wires_the_markdown_filter_into_the_nautilus_pipeline() {
         let adapter = NautilusPlatformAdapter::new(base_probes(nautilus_frontmost(), None));
-        let missing = adapter.classify_hovered_item(build_hovered_item_snapshot(
-            HoveredItemObservation {
+        let missing =
+            adapter.classify_hovered_item(build_hovered_item_snapshot(HoveredItemObservation {
                 entity_kind: HoveredEntityKind::File,
                 resolution_scope: HoverResolutionScope::ExactItemUnderPointer,
                 backend: "test".to_string(),
@@ -452,8 +454,7 @@ mod tests {
                 path_source: HoverCandidateSource::AtspiPathAttribute,
                 visible_markdown_peer_count: Some(2),
                 unsupported_description: None,
-            },
-        ));
+            }));
         assert!(matches!(
             missing.rejection,
             Some(HoveredItemResolutionRejection::CandidateRejected {
@@ -461,8 +462,8 @@ mod tests {
             })
         ));
 
-        let unsupported = adapter.classify_hovered_item(build_hovered_item_snapshot(
-            HoveredItemObservation {
+        let unsupported =
+            adapter.classify_hovered_item(build_hovered_item_snapshot(HoveredItemObservation {
                 entity_kind: HoveredEntityKind::Unsupported,
                 resolution_scope: HoverResolutionScope::ExactItemUnderPointer,
                 backend: "test".to_string(),
@@ -472,8 +473,7 @@ mod tests {
                 path_source: HoverCandidateSource::AtspiUriAttribute,
                 visible_markdown_peer_count: None,
                 unsupported_description: Some("hovered widget is not a file row".to_string()),
-            },
-        ));
+            }));
         assert!(matches!(
             unsupported.rejection,
             Some(HoveredItemResolutionRejection::CandidateRejected {

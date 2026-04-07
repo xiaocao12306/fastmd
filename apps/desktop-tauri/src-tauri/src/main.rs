@@ -13,6 +13,7 @@ use fastmd_platform_linux_nautilus::{
     EDIT_LIFECYCLE_RUNTIME_NOTE, MONITOR_SELECTION_POLICY, MONITOR_SELECTION_RUNTIME_NOTE,
     PREVIEW_PLACEMENT_POLICY, PREVIEW_PLACEMENT_RUNTIME_NOTE,
 };
+use fastmd_render::{stage2_rendering_contract, MarkdownFeature};
 use serde::Serialize;
 use tauri::{
     AppHandle, Emitter, Manager, Monitor as TauriMonitor, PhysicalPosition, PhysicalRect,
@@ -76,6 +77,7 @@ struct HostCapabilitiesPayload {
     close_on_blur_enabled: bool,
     can_persist_preview_edits: bool,
     hot_interaction_surface: Option<HotInteractionSurfacePayload>,
+    shared_rendering_surface: Option<SharedRenderingSurfacePayload>,
     linux_probe_plans: Option<LinuxProbePlansPayload>,
     linux_preview_placement: Option<LinuxPreviewPlacementPayload>,
     linux_runtime_diagnostics: Option<LinuxRuntimeDiagnosticsPayload>,
@@ -94,6 +96,16 @@ struct HotInteractionSurfacePayload {
     window_focus_strategy: &'static str,
     dom_focus_target: &'static str,
     pointer_scroll_routing: &'static str,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SharedRenderingSurfacePayload {
+    source: &'static str,
+    macos_reference_renderer: &'static str,
+    supported_features: Vec<String>,
+    width_tiers_px: Vec<u32>,
+    aspect_ratio: f64,
 }
 
 #[derive(Clone, Copy, Serialize)]
@@ -301,6 +313,7 @@ fn initial_host_capabilities(shell_state: &ShellStatePayload) -> HostCapabilitie
         close_on_blur_enabled: true,
         can_persist_preview_edits: false,
         hot_interaction_surface: hot_interaction_surface_payload(),
+        shared_rendering_surface: shared_rendering_surface_payload(),
         linux_probe_plans: linux_probe_plans_payload(),
         linux_preview_placement: linux_preview_placement_payload(),
         linux_runtime_diagnostics: linux_runtime_diagnostics_payload(),
@@ -352,6 +365,48 @@ fn hot_interaction_surface_payload() -> Option<HotInteractionSurfacePayload> {
         dom_focus_target: ".shell root with tabindex=-1 after shell renders",
         pointer_scroll_routing:
             "shared frontend wheel delta normalization routed into preview scroll",
+    })
+}
+
+fn markdown_feature_label(feature: MarkdownFeature) -> &'static str {
+    match feature {
+        MarkdownFeature::Heading => "heading",
+        MarkdownFeature::Paragraph => "paragraph",
+        MarkdownFeature::Emphasis => "emphasis",
+        MarkdownFeature::Strong => "strong",
+        MarkdownFeature::FencedCode => "fenced-code",
+        MarkdownFeature::SyntaxHighlightedCode => "syntax-highlighted-code",
+        MarkdownFeature::Blockquote => "blockquote",
+        MarkdownFeature::TaskList => "task-list",
+        MarkdownFeature::Table => "table",
+        MarkdownFeature::Mermaid => "mermaid",
+        MarkdownFeature::Math => "math",
+        MarkdownFeature::Image => "image",
+        MarkdownFeature::Footnote => "footnote",
+        MarkdownFeature::HtmlBlock => "html-block",
+    }
+}
+
+fn shared_rendering_surface_payload() -> Option<SharedRenderingSurfacePayload> {
+    if !matches!(
+        detected_platform_id(),
+        "macos" | "windows" | "ubuntu" | "shell"
+    ) {
+        return None;
+    }
+
+    let contract = stage2_rendering_contract(0);
+    Some(SharedRenderingSurfacePayload {
+        source: "fastmd-render::stage2_rendering_contract",
+        macos_reference_renderer: "apps/macos/Sources/FastMD/MarkdownRenderer.swift",
+        supported_features: contract
+            .supported_features
+            .into_iter()
+            .map(markdown_feature_label)
+            .map(ToOwned::to_owned)
+            .collect(),
+        width_tiers_px: contract.width_tiers_px,
+        aspect_ratio: contract.aspect_ratio,
     })
 }
 
@@ -1200,6 +1255,24 @@ mod tests {
                 .is_some(),
             matches!(detected_platform_id(), "macos" | "windows" | "ubuntu")
         );
+    }
+
+    #[test]
+    fn shared_rendering_surface_payload_tracks_the_macos_pinned_stage2_contract() {
+        let payload = shared_rendering_surface_payload().expect("render surface payload");
+
+        assert_eq!(payload.source, "fastmd-render::stage2_rendering_contract");
+        assert_eq!(
+            payload.macos_reference_renderer,
+            "apps/macos/Sources/FastMD/MarkdownRenderer.swift"
+        );
+        assert_eq!(payload.width_tiers_px, vec![560, 960, 1440, 1920]);
+        assert_eq!(payload.aspect_ratio, PREVIEW_ASPECT_RATIO);
+        assert!(payload.supported_features.contains(&"mermaid".to_owned()));
+        assert!(payload.supported_features.contains(&"math".to_owned()));
+        assert!(payload
+            .supported_features
+            .contains(&"html-block".to_owned()));
     }
 
     #[test]

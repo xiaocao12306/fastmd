@@ -5,6 +5,7 @@ import {
   readLinuxHoveredItemDiagnostic,
   readLinuxProbePlans,
   readLinuxRuntimeDiagnostics,
+  readSharedRenderingSurface,
   listenToCloseRequests,
   listenToHostCapabilities,
   listenToShellState,
@@ -218,6 +219,7 @@ export class PreviewShellApp {
         this.hostCapabilities = payload;
         this.syncCapabilitySummary();
         this.syncHotInteractionSurfaceAttributes();
+        this.syncSharedRenderingSurfaceAttributes();
         this.syncLinuxProbePlanAttributes();
         this.syncLinuxPreviewPlacementAttributes();
         this.syncLinuxRuntimeDiagnosticAttributes();
@@ -319,6 +321,7 @@ export class PreviewShellApp {
     this.documentTitleNode.textContent = this.shellState.documentTitle;
     this.syncCapabilitySummary();
     this.syncHotInteractionSurfaceAttributes();
+    this.syncSharedRenderingSurfaceAttributes();
     this.syncLinuxProbePlanAttributes();
     this.syncLinuxPreviewPlacementAttributes();
     this.syncLinuxRuntimeDiagnosticAttributes();
@@ -363,6 +366,28 @@ export class PreviewShellApp {
     this.shellNode.dataset.hotSurfaceDomFocusTarget = hotInteractionSurface.domFocusTarget;
     this.shellNode.dataset.hotSurfacePointerScrollRouting =
       hotInteractionSurface.pointerScrollRouting;
+  }
+
+  private syncSharedRenderingSurfaceAttributes(): void {
+    const renderingSurface = readSharedRenderingSurface(this.hostCapabilities);
+
+    if (!renderingSurface) {
+      delete this.shellNode.dataset.sharedRenderSurfaceSource;
+      delete this.shellNode.dataset.sharedRenderSurfaceMacosReferenceRenderer;
+      delete this.shellNode.dataset.sharedRenderSurfaceFeatures;
+      delete this.shellNode.dataset.sharedRenderSurfaceWidthTiers;
+      delete this.shellNode.dataset.sharedRenderSurfaceAspectRatio;
+      return;
+    }
+
+    this.shellNode.dataset.sharedRenderSurfaceSource = renderingSurface.source;
+    this.shellNode.dataset.sharedRenderSurfaceMacosReferenceRenderer =
+      renderingSurface.macosReferenceRenderer;
+    this.shellNode.dataset.sharedRenderSurfaceFeatures =
+      renderingSurface.supportedFeatures.join(",");
+    this.shellNode.dataset.sharedRenderSurfaceWidthTiers =
+      renderingSurface.widthTiersPx.join(",");
+    this.shellNode.dataset.sharedRenderSurfaceAspectRatio = String(renderingSurface.aspectRatio);
   }
 
   private syncLinuxProbePlanAttributes(): void {

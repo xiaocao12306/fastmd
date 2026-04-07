@@ -144,9 +144,14 @@ pub fn crate_slice_validation_notes() -> Vec<ValidationNote> {
             note: "Linux desktop shells now disable blur-close while editing, suppress preview close requests and hotkeys during the lock, and only re-arm normal preview behavior after save or cancel clears edit mode.",
         },
         ValidationNote {
+            item: "Implement the same Markdown rendering surface as macOS",
+            status: ValidationStatus::ImplementedInSlice,
+            note: "The Ubuntu shell now exposes the fastmd-render Stage 2 rendering contract to the shared frontend, and fastmd-render already pins ui/src/markdown.ts, ui/src/styles.css, and ui/src/app.ts to the current macOS MarkdownRenderer runtime, typography, theme, layout, and compact chrome copy.",
+        },
+        ValidationNote {
             item: "Implement preview opening, rendering, editing, and close behavior parity",
             status: ValidationStatus::BlockedByLowerLayers,
-            note: "Shared shell parity now covers width tiers, work-area-based 4:3 placement, hint-chip chrome, Tab toggle, paged scrolling, and Escape close; hover-driven opening, edit persistence, and host-driven close paths still depend on shared-core and live Nautilus wiring.",
+            note: "Shared shell parity now covers the macOS-matching rendering surface, width tiers, work-area-based 4:3 placement, hint-chip chrome, Tab toggle, paged scrolling, and Escape close; hover-driven opening, edit persistence, and host-driven close paths still depend on shared-core and live Nautilus wiring.",
         },
         ValidationNote {
             item: "Implement the same runtime diagnostics coverage as macOS where host APIs permit",

@@ -11,6 +11,7 @@ import type {
   LinuxRuntimeDiagnostics,
   PreviewGeometry,
   ScreenPoint,
+  SharedRenderingSurface,
   ShellState,
 } from "./types";
 
@@ -125,6 +126,12 @@ export function readHotInteractionSurface(
   capabilities: HostCapabilities,
 ): HotInteractionSurface | null {
   return capabilities.hotInteractionSurface ?? null;
+}
+
+export function readSharedRenderingSurface(
+  capabilities: HostCapabilities,
+): SharedRenderingSurface | null {
+  return capabilities.sharedRenderingSurface ?? null;
 }
 
 export function readLinuxRuntimeDiagnostics(

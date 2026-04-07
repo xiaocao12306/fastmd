@@ -746,6 +746,7 @@ name = "fastmd-desktop-tauri"
 version = "0.1.0"
 dependencies = [
  "fastmd-platform-linux-nautilus",
+ "fastmd-render",
  "serde",
  "tauri",
  "tauri-build",

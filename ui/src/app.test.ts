@@ -238,6 +238,56 @@ describe("FastMD shared preview shell", () => {
     expect(document.body.textContent).not.toContain("wheel delta normalization");
   });
 
+  it("stores shared render-surface parity metadata as hidden shell state", async () => {
+    createApp({
+      ...demoBootstrapPayload,
+      hostCapabilities: {
+        ...demoBootstrapPayload.hostCapabilities,
+        platformId: "ubuntu",
+        runtimeMode: "desktop",
+        sharedRenderingSurface: {
+          source: "fastmd-render::stage2_rendering_contract",
+          macosReferenceRenderer: "apps/macos/Sources/FastMD/MarkdownRenderer.swift",
+          supportedFeatures: [
+            "heading",
+            "paragraph",
+            "emphasis",
+            "strong",
+            "fenced-code",
+            "syntax-highlighted-code",
+            "blockquote",
+            "task-list",
+            "table",
+            "mermaid",
+            "math",
+            "image",
+            "footnote",
+            "html-block",
+          ],
+          widthTiersPx: [560, 960, 1440, 1920],
+          aspectRatio: 4 / 3,
+        },
+      },
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const shell = document.querySelector(".shell") as HTMLElement | null;
+
+    expect(shell?.dataset.sharedRenderSurfaceSource).toBe(
+      "fastmd-render::stage2_rendering_contract",
+    );
+    expect(shell?.dataset.sharedRenderSurfaceMacosReferenceRenderer).toBe(
+      "apps/macos/Sources/FastMD/MarkdownRenderer.swift",
+    );
+    expect(shell?.dataset.sharedRenderSurfaceFeatures).toContain("mermaid");
+    expect(shell?.dataset.sharedRenderSurfaceFeatures).toContain("math");
+    expect(shell?.dataset.sharedRenderSurfaceFeatures).toContain("html-block");
+    expect(shell?.dataset.sharedRenderSurfaceWidthTiers).toBe("560,960,1440,1920");
+    expect(shell?.dataset.sharedRenderSurfaceAspectRatio).toBe(String(4 / 3));
+    expect(document.body.textContent).not.toContain("MarkdownRenderer.swift");
+    expect(document.body.textContent).not.toContain("html-block");
+  });
+
   it("stores Ubuntu runtime diagnostics as hidden shell metadata", async () => {
     createApp({
       ...demoBootstrapPayload,
