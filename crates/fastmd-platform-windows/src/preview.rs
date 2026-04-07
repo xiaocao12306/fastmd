@@ -1,8 +1,7 @@
-use std::collections::BTreeSet;
 use std::fmt;
 
 use fastmd_contracts::{
-    macos_preview_feature_list, AppCommand, AppEvent, DocumentKind, DocumentOrigin,
+    merged_preview_feature_coverage, AppCommand, AppEvent, DocumentKind, DocumentOrigin,
     HoverResolutionScope, HoveredItem, MacOsPreviewFeature, PlatformId, PreviewState,
     PreviewWindowRequest, ResolvedDocument, RuntimeDiagnostic, RuntimeDiagnosticCategory,
     RuntimeDiagnosticLevel, ScreenPoint,
@@ -288,19 +287,11 @@ pub fn windows_adapter_preview_feature_coverage() -> &'static [MacOsPreviewFeatu
 }
 
 pub fn windows_preview_loop_feature_coverage() -> Vec<MacOsPreviewFeature> {
-    let mut features = BTreeSet::new();
-    features.extend(
-        macos_preview_feature_list()
-            .iter()
-            .copied()
-            .filter(|feature| {
-                shared_core_preview_feature_coverage().contains(feature)
-                    || shared_render_preview_feature_coverage().contains(feature)
-                    || windows_adapter_preview_feature_coverage().contains(feature)
-            }),
-    );
-
-    features.into_iter().collect()
+    merged_preview_feature_coverage(&[
+        shared_core_preview_feature_coverage(),
+        shared_render_preview_feature_coverage(),
+        windows_adapter_preview_feature_coverage(),
+    ])
 }
 
 fn hovered_item_from_probe(
@@ -630,6 +621,7 @@ fn monitor_selection_runtime_diagnostic(
 
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeSet;
     use std::fs;
     use std::path::{Path, PathBuf};
     use std::time::{SystemTime, UNIX_EPOCH};

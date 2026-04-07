@@ -766,6 +766,11 @@ version = "0.1.0"
 [[package]]
 name = "fastmd-platform-macos"
 version = "0.1.0"
+dependencies = [
+ "fastmd-contracts",
+ "fastmd-core",
+ "fastmd-render",
+]
 
 [[package]]
 name = "fastmd-platform-windows"
@@ -773,6 +778,7 @@ version = "0.1.0"
 dependencies = [
  "fastmd-contracts",
  "fastmd-core",
+ "fastmd-render",
  "serde",
  "serde_json",
 ]

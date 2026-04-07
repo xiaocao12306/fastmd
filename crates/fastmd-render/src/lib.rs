@@ -461,7 +461,9 @@ pub fn find_smallest_matching_block(blocks: &[BlockMapping], line: u32) -> Optio
 #[cfg(test)]
 mod tests {
     use super::*;
-    use fastmd_contracts::{EditingPhase, EditingState, MacOsPreviewFeature};
+    use fastmd_contracts::{
+        EditingPhase, EditingState, MacOsPreviewFeature, preview_feature_gaps_against_reference,
+    };
     use std::collections::BTreeSet;
     use std::fs;
     use std::path::PathBuf;
@@ -639,6 +641,18 @@ mod tests {
         assert!(features.contains(&MacOsPreviewFeature::CompactHintChipChrome));
         assert!(features.contains(&MacOsPreviewFeature::InlineBlockEditEntryAndSourceMapping));
         assert!(features.contains(&MacOsPreviewFeature::MarkdownRenderingSurface));
+    }
+
+    #[test]
+    fn shared_render_preview_feature_coverage_stays_inside_render_owned_boundary() {
+        let gaps = preview_feature_gaps_against_reference(&[shared_render_preview_feature_coverage()]);
+
+        assert!(gaps.contains(&MacOsPreviewFeature::FrontmostFileManagerGating));
+        assert!(gaps.contains(&MacOsPreviewFeature::HoverOpensAfterOneSecond));
+        assert!(gaps.contains(&MacOsPreviewFeature::RuntimeDiagnosticsCoverage));
+        assert!(!gaps.contains(&MacOsPreviewFeature::CompactHintChipChrome));
+        assert!(!gaps.contains(&MacOsPreviewFeature::InlineBlockEditEntryAndSourceMapping));
+        assert!(!gaps.contains(&MacOsPreviewFeature::MarkdownRenderingSurface));
     }
 
     #[test]

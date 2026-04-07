@@ -661,6 +661,37 @@ pub fn macos_preview_feature_list() -> &'static [MacOsPreviewFeature] {
     &MACOS_PREVIEW_FEATURE_LIST
 }
 
+pub fn merged_preview_feature_coverage(
+    feature_sets: &[&[MacOsPreviewFeature]],
+) -> Vec<MacOsPreviewFeature> {
+    let mut features = BTreeSet::new();
+    for feature_set in feature_sets {
+        features.extend(feature_set.iter().copied());
+    }
+
+    features.into_iter().collect()
+}
+
+pub fn preview_feature_gaps_against_reference(
+    feature_sets: &[&[MacOsPreviewFeature]],
+) -> Vec<MacOsPreviewFeature> {
+    let covered: BTreeSet<_> = merged_preview_feature_coverage(feature_sets)
+        .into_iter()
+        .collect();
+
+    macos_preview_feature_list()
+        .iter()
+        .copied()
+        .filter(|feature| !covered.contains(feature))
+        .collect()
+}
+
+pub fn preview_feature_coverage_matches_reference(
+    feature_sets: &[&[MacOsPreviewFeature]],
+) -> bool {
+    preview_feature_gaps_against_reference(feature_sets).is_empty()
+}
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct MacOsReferenceBehavior {
     pub reference_surface: &'static str,
@@ -1629,6 +1660,39 @@ mod tests {
             MacOsPreviewFeature::HoverOpensAfterOneSecond.blueprint_label(),
             "Open preview after a 1-second hover debounce"
         );
+    }
+
+    #[test]
+    fn preview_feature_coverage_helpers_deduplicate_and_report_reference_gaps() {
+        let merged = merged_preview_feature_coverage(&[
+            &[
+                MacOsPreviewFeature::HoverOpensAfterOneSecond,
+                MacOsPreviewFeature::WidthTierModel,
+            ],
+            &[
+                MacOsPreviewFeature::WidthTierModel,
+                MacOsPreviewFeature::CompactHintChipChrome,
+            ],
+        ]);
+        let merged_set: BTreeSet<_> = merged.iter().copied().collect();
+
+        assert_eq!(merged.len(), 3);
+        assert_eq!(merged_set.len(), 3);
+        assert!(merged_set.contains(&MacOsPreviewFeature::HoverOpensAfterOneSecond));
+        assert!(merged_set.contains(&MacOsPreviewFeature::WidthTierModel));
+        assert!(merged_set.contains(&MacOsPreviewFeature::CompactHintChipChrome));
+
+        let gaps = preview_feature_gaps_against_reference(&[&[
+            MacOsPreviewFeature::HoverOpensAfterOneSecond,
+            MacOsPreviewFeature::WidthTierModel,
+        ]]);
+        assert!(gaps.contains(&MacOsPreviewFeature::CompactHintChipChrome));
+        assert!(gaps.contains(&MacOsPreviewFeature::RuntimeDiagnosticsCoverage));
+        assert!(!preview_feature_coverage_matches_reference(&[&[
+            MacOsPreviewFeature::HoverOpensAfterOneSecond,
+            MacOsPreviewFeature::WidthTierModel,
+        ]]));
+        assert!(preview_feature_coverage_matches_reference(&[macos_preview_feature_list()]));
     }
 
     #[test]

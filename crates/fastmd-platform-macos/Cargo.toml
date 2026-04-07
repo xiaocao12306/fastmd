@@ -8,3 +8,8 @@ readme = "README.md"
 
 [lib]
 path = "src/lib.rs"
+
+[dependencies]
+fastmd-contracts = { path = "../fastmd-contracts" }
+fastmd-core = { path = "../fastmd-core" }
+fastmd-render = { path = "../fastmd-render" }

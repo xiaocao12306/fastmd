@@ -562,6 +562,7 @@ mod tests {
     use fastmd_contracts::{
         AppCommand, BackgroundMode, DocumentKind, DocumentOrigin, DocumentPath, EditingPhase,
         FrontSurfaceIdentity, FrontSurfaceKind, MacOsPreviewFeature, PageDirection, PlatformId,
+        preview_feature_gaps_against_reference,
     };
     use fastmd_render::BlockKind;
     use std::collections::BTreeSet;
@@ -780,6 +781,27 @@ mod tests {
         assert!(features.contains(&MacOsPreviewFeature::WidthTierModel));
         assert!(features.contains(&MacOsPreviewFeature::EditSaveCancelAndLock));
         assert!(features.contains(&MacOsPreviewFeature::ClosePolicyOutsideClickAppSwitchEscape));
+    }
+
+    #[test]
+    fn shared_core_preview_feature_coverage_only_leaves_render_and_host_boundary_items() {
+        let gaps: BTreeSet<_> =
+            preview_feature_gaps_against_reference(&[shared_core_preview_feature_coverage()])
+                .into_iter()
+                .collect();
+        let expected: BTreeSet<_> = [
+            MacOsPreviewFeature::ExactHoveredMarkdownResolution,
+            MacOsPreviewFeature::AcceptedLocalMarkdownFilesOnly,
+            MacOsPreviewFeature::MonitorSelectionAndCoordinateTranslation,
+            MacOsPreviewFeature::CompactHintChipChrome,
+            MacOsPreviewFeature::InlineBlockEditEntryAndSourceMapping,
+            MacOsPreviewFeature::MarkdownRenderingSurface,
+            MacOsPreviewFeature::RuntimeDiagnosticsCoverage,
+        ]
+        .into_iter()
+        .collect();
+
+        assert_eq!(gaps, expected);
     }
 
     #[test]
