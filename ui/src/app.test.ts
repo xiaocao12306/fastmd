@@ -332,6 +332,7 @@ describe("FastMD shared preview shell", () => {
             windowTitle: "Docs",
             processId: 4201,
             isOpen: true,
+            inferredBlurCloseReason: "outside-click",
             rejection: null,
             detail: "Live Linux frontmost probing kept Nautilus as the foreground gate.",
             note:
@@ -374,6 +375,7 @@ describe("FastMD shared preview shell", () => {
     expect(shell?.dataset.linuxFrontmostGateWindowTitle).toBe("Docs");
     expect(shell?.dataset.linuxFrontmostGateProcessId).toBe("4201");
     expect(shell?.dataset.linuxFrontmostGateIsOpen).toBe("true");
+    expect(shell?.dataset.linuxFrontmostGateInferredBlurCloseReason).toBe("outside-click");
     expect(document.body.textContent).not.toContain("live-atspi-wayland");
     expect(document.body.textContent).not.toContain("org.gnome.Nautilus");
   });
@@ -470,6 +472,7 @@ describe("FastMD shared preview shell", () => {
             displayServer: "wayland",
             apiStack:
               "focus=AT-SPI focused accessible + app_bus=AT-SPI application bus name",
+            inferredBlurCloseReason: "focus-lost",
             note: "Wayland frontmost-gate diagnostics are emitted now.",
           },
           hoveredItem: {
@@ -557,7 +560,10 @@ describe("FastMD shared preview shell", () => {
     expect(shell?.dataset.linuxPreviewPlacementGeometry).toBe(
       "x=1942,y=168,width=960,height=720",
     );
+    expect(shell?.dataset.linuxEditLifecyclePolicy).toBe("edit-lock-disables-blur-close");
+    expect(shell?.dataset.linuxEditLifecycleCanPersistPreviewEdits).toBe("false");
     expect(shell?.dataset.linuxEditLifecycleLastCloseReason).toBe("focus-lost");
+    expect(shell?.dataset.linuxEditLifecycleNote).toBe("Edit-lifecycle diagnostics are emitted now.");
     expect(shell?.dataset.linuxHoverLifecycleStatus).toBe("polling");
     expect(shell?.dataset.linuxHoverLifecyclePollingIntervalMs).toBe("100");
     expect(shell?.dataset.linuxHoverLifecycleTriggerDelayMs).toBe("1000");
@@ -568,6 +574,79 @@ describe("FastMD shared preview shell", () => {
     expect(shell?.dataset.linuxHoverLifecycleLastAction).toBe("replaced");
     expect(document.body.textContent).not.toContain("Wayland frontmost-gate diagnostics are emitted now.");
     expect(document.body.textContent).not.toContain("edit-lock-disables-blur-close");
+  });
+
+  it("stores Ubuntu outside-click and app-switch close parity reasons as hidden shell metadata", async () => {
+    createApp({
+      ...demoBootstrapPayload,
+      hostCapabilities: {
+        ...demoBootstrapPayload.hostCapabilities,
+        platformId: "ubuntu",
+        runtimeMode: "desktop",
+        linuxRuntimeDiagnostics: {
+          displayServer: "x11",
+          frontmostGate: {
+            status: "emitted",
+            displayServer: "x11",
+            backend: "live-atspi-x11",
+            apiStack:
+              "focus=AT-SPI focused accessible + stable_surface=X11 _NET_ACTIVE_WINDOW",
+            observedIdentifier: "org.gnome.Terminal",
+            stableSurfaceId: "x11:0x3600011",
+            windowTitle: "Terminal",
+            processId: 4402,
+            isOpen: false,
+            inferredBlurCloseReason: "app-switch",
+            rejection: "frontmost surface is not Nautilus",
+            detail:
+              "Live Linux frontmost probing rejected the foreground surface before close-reason inference.",
+            note:
+              "X11 frontmost-gate diagnostics now run against the live AT-SPI plus _NET_ACTIVE_WINDOW probe path; Ubuntu validation evidence is still required before parity sign-off.",
+          },
+          hoveredItem: {
+            status: "pending-live-probe",
+            displayServer: "x11",
+            apiStack: "pointer=AT-SPI Component.GetAccessibleAtPoint(screen)",
+            note: "hover pending",
+          },
+          monitorSelection: {
+            status: "emitted",
+            selectionPolicy: "containing-work-area-then-nearest",
+            note: "monitor emitted",
+          },
+          previewPlacement: {
+            status: "emitted",
+            policy: "4:3-reposition-before-shrink",
+            note: "placement emitted",
+          },
+          editLifecycle: {
+            status: "emitted",
+            policy: "edit-lock-disables-blur-close",
+            editing: false,
+            closeOnBlurEnabled: true,
+            canPersistPreviewEdits: true,
+            lastCloseReason: "app-switch",
+            note: "Edit-lifecycle diagnostics are emitted now.",
+          },
+          hoverLifecycle: {
+            status: "polling",
+            pollingIntervalMs: 100,
+            triggerDelayMs: 1000,
+            previewVisible: false,
+            note: "Linux hover lifecycle is active.",
+          },
+        },
+      },
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const shell = document.querySelector(".shell") as HTMLElement | null;
+
+    expect(shell?.dataset.linuxFrontmostGateInferredBlurCloseReason).toBe("app-switch");
+    expect(shell?.dataset.linuxEditLifecycleLastCloseReason).toBe("app-switch");
+    expect(shell?.dataset.linuxEditLifecycleCanPersistPreviewEdits).toBe("true");
+    expect(document.body.textContent).not.toContain("app-switch");
+    expect(document.body.textContent).not.toContain("_NET_ACTIVE_WINDOW");
   });
 
   it("saves inline edits through the attached-source bridge path", async () => {

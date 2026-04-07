@@ -3,6 +3,7 @@ import {
   bootstrapShell,
   readHotInteractionSurface,
   readLinuxFrontmostGateDiagnostic,
+  readLinuxEditLifecycleDiagnostic,
   readLinuxHoverLifecycleDiagnostic,
   readLinuxHoveredItemDiagnostic,
   readLinuxProbePlanSemanticGuardrail,
@@ -478,6 +479,7 @@ export class PreviewShellApp {
         "linuxFrontmostGateWindowTitle",
         "linuxFrontmostGateProcessId",
         "linuxFrontmostGateIsOpen",
+        "linuxFrontmostGateInferredBlurCloseReason",
         "linuxFrontmostGateRejection",
         "linuxFrontmostGateDetail",
         "linuxFrontmostGateNote",
@@ -503,9 +505,12 @@ export class PreviewShellApp {
         "linuxPreviewPlacementRequestedWidth",
         "linuxPreviewPlacementGeometry",
         "linuxEditLifecycleStatus",
+        "linuxEditLifecyclePolicy",
         "linuxEditLifecycleEditing",
         "linuxEditLifecycleCloseOnBlur",
+        "linuxEditLifecycleCanPersistPreviewEdits",
         "linuxEditLifecycleLastCloseReason",
+        "linuxEditLifecycleNote",
         "linuxHoverLifecycleStatus",
         "linuxHoverLifecyclePollingIntervalMs",
         "linuxHoverLifecycleTriggerDelayMs",
@@ -534,6 +539,10 @@ export class PreviewShellApp {
       this.setShellData("linuxFrontmostGateWindowTitle", frontmostGate.windowTitle);
       this.setShellData("linuxFrontmostGateProcessId", frontmostGate.processId);
       this.setShellData("linuxFrontmostGateIsOpen", frontmostGate.isOpen);
+      this.setShellData(
+        "linuxFrontmostGateInferredBlurCloseReason",
+        frontmostGate.inferredBlurCloseReason,
+      );
       this.setShellData("linuxFrontmostGateRejection", frontmostGate.rejection);
       this.setShellData("linuxFrontmostGateDetail", frontmostGate.detail);
       this.setShellData("linuxFrontmostGateNote", frontmostGate.note);
@@ -583,16 +592,25 @@ export class PreviewShellApp {
       "linuxPreviewPlacementGeometry",
       this.formatRect(diagnostics.previewPlacement.appliedGeometry),
     );
-    this.setShellData("linuxEditLifecycleStatus", diagnostics.editLifecycle.status);
-    this.setShellData("linuxEditLifecycleEditing", diagnostics.editLifecycle.editing);
-    this.setShellData(
-      "linuxEditLifecycleCloseOnBlur",
-      diagnostics.editLifecycle.closeOnBlurEnabled,
-    );
-    this.setShellData(
-      "linuxEditLifecycleLastCloseReason",
-      diagnostics.editLifecycle.lastCloseReason,
-    );
+    const editLifecycle = readLinuxEditLifecycleDiagnostic(this.hostCapabilities);
+    if (editLifecycle) {
+      this.setShellData("linuxEditLifecycleStatus", editLifecycle.status);
+      this.setShellData("linuxEditLifecyclePolicy", editLifecycle.policy);
+      this.setShellData("linuxEditLifecycleEditing", editLifecycle.editing);
+      this.setShellData(
+        "linuxEditLifecycleCloseOnBlur",
+        editLifecycle.closeOnBlurEnabled,
+      );
+      this.setShellData(
+        "linuxEditLifecycleCanPersistPreviewEdits",
+        editLifecycle.canPersistPreviewEdits,
+      );
+      this.setShellData(
+        "linuxEditLifecycleLastCloseReason",
+        editLifecycle.lastCloseReason,
+      );
+      this.setShellData("linuxEditLifecycleNote", editLifecycle.note);
+    }
     const hoverLifecycle = readLinuxHoverLifecycleDiagnostic(this.hostCapabilities);
     if (hoverLifecycle) {
       this.setShellData("linuxHoverLifecycleStatus", hoverLifecycle.status);

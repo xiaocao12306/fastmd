@@ -56,6 +56,7 @@ Shared shell parity now covered outside this crate:
 - the Ubuntu shell now keeps the Wayland/X11 semantic guardrail in hidden shell metadata, so backend probe differences remain inspectable without leaking Linux-only copy into the visible macOS-parity shell
 - `Tab`, paged scrolling, and `Escape` close semantics are validated in the shared Tauri/UI lane
 - Linux blur-close handling now distinguishes `outside-click` from `app-switch` by re-checking the live frontmost Nautilus gate before the preview hides; edit lock still blocks both paths
+- the shared Tauri/UI lane now keeps the inferred blur-close reason plus edit-lifecycle policy, persistence eligibility, and last close reason in hidden shell metadata so Ubuntu close-path parity stays inspectable without diverging from the macOS-visible shell
 - inline edit entry still starts from the double-clicked rendered block that carries source-line metadata, matching the macOS shell
 - inline edit source extraction still uses the same start-line/end-line block mapping model as the macOS shell
 - attached-source saves now write Markdown back to the attached file in the shared Tauri shell, while cancel leaves the file untouched

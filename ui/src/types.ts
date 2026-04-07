@@ -107,6 +107,7 @@ export interface LinuxFrontmostGateDiagnostic {
   windowTitle?: string | null;
   processId?: number | null;
   isOpen?: boolean | null;
+  inferredBlurCloseReason?: CloseReason | null;
   rejection?: string | null;
   detail?: string | null;
   note: string;

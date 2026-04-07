@@ -181,6 +181,7 @@ struct LinuxFrontmostGateDiagnosticPayload {
     window_title: Option<String>,
     process_id: Option<u32>,
     is_open: Option<bool>,
+    inferred_blur_close_reason: Option<String>,
     rejection: Option<String>,
     detail: Option<String>,
     note: String,
@@ -422,8 +423,7 @@ fn linux_probe_plans_payload() -> Option<LinuxProbePlansPayload> {
     let wayland_probe_plan = fastmd_platform_linux_nautilus::backends::wayland::probe_plan();
     let x11_probe_plan = fastmd_platform_linux_nautilus::backends::x11::probe_plan();
     debug_assert_eq!(
-        wayland_probe_plan.semantic_guardrail,
-        x11_probe_plan.semantic_guardrail,
+        wayland_probe_plan.semantic_guardrail, x11_probe_plan.semantic_guardrail,
         "Wayland and X11 backend plans must preserve one shared FastMD semantic guardrail",
     );
 
@@ -574,6 +574,7 @@ fn linux_runtime_diagnostics_payload() -> Option<LinuxRuntimeDiagnosticsPayload>
             window_title: None,
             process_id: None,
             is_open: None,
+            inferred_blur_close_reason: None,
             rejection: None,
             detail: None,
             note: frontmost_gate_pending_note(display_server).to_owned(),
@@ -991,11 +992,13 @@ fn refresh_linux_frontmost_gate_diagnostics(
             window_title: Option<String>,
             process_id: Option<u32>,
             is_open: bool,
+            inferred_blur_close_reason: String,
             rejection: Option<String>,
             detail: String,
             note: String,
         },
         ProbeFailed {
+            inferred_blur_close_reason: String,
             detail: String,
             note: String,
         },
@@ -1021,6 +1024,11 @@ fn refresh_linux_frontmost_gate_diagnostics(
             window_title: gate.frontmost_app.window_title.clone(),
             process_id: gate.frontmost_app.process_id,
             is_open: gate.is_open,
+            inferred_blur_close_reason: linux_blur_close_reason(
+                gate.is_open,
+                gate.rejection.as_ref(),
+            )
+            .to_owned(),
             rejection: gate.rejection.as_ref().map(ToString::to_string),
             detail: if gate.is_open {
                 "Live Linux frontmost probing kept Nautilus as the foreground gate.".to_owned()
@@ -1030,6 +1038,7 @@ fn refresh_linux_frontmost_gate_diagnostics(
             note: linux_frontmost_live_note(gate.session.display_server),
         },
         Err(error) => FrontmostGateRefresh::ProbeFailed {
+            inferred_blur_close_reason: "focus-lost".to_owned(),
             detail: error.to_string(),
             note: linux_frontmost_probe_failure_note(display_server),
         },
@@ -1046,6 +1055,7 @@ fn refresh_linux_frontmost_gate_diagnostics(
             window_title,
             process_id,
             is_open,
+            inferred_blur_close_reason,
             rejection,
             detail,
             note,
@@ -1065,11 +1075,17 @@ fn refresh_linux_frontmost_gate_diagnostics(
             diagnostics.frontmost_gate.window_title = window_title.clone();
             diagnostics.frontmost_gate.process_id = *process_id;
             diagnostics.frontmost_gate.is_open = Some(*is_open);
+            diagnostics.frontmost_gate.inferred_blur_close_reason =
+                Some(inferred_blur_close_reason.clone());
             diagnostics.frontmost_gate.rejection = rejection.clone();
             diagnostics.frontmost_gate.detail = Some(detail.clone());
             diagnostics.frontmost_gate.note = note.clone();
         }
-        FrontmostGateRefresh::ProbeFailed { detail, note } => {
+        FrontmostGateRefresh::ProbeFailed {
+            inferred_blur_close_reason,
+            detail,
+            note,
+        } => {
             host_capabilities.frontmost_file_manager = "unknown";
             let Some(diagnostics) = host_capabilities.linux_runtime_diagnostics.as_mut() else {
                 return None;
@@ -1085,6 +1101,8 @@ fn refresh_linux_frontmost_gate_diagnostics(
             diagnostics.frontmost_gate.window_title = None;
             diagnostics.frontmost_gate.process_id = None;
             diagnostics.frontmost_gate.is_open = None;
+            diagnostics.frontmost_gate.inferred_blur_close_reason =
+                Some(inferred_blur_close_reason.clone());
             diagnostics.frontmost_gate.rejection = None;
             diagnostics.frontmost_gate.detail = Some(detail.clone());
             diagnostics.frontmost_gate.note = note.clone();
@@ -2108,7 +2126,9 @@ mod tests {
                 "Match macOS product semantics exactly; the display server changes host probing only."
             );
             assert!(payload.wayland_frontmost_api_stack.contains("AT-SPI"));
-            assert!(payload.x11_frontmost_api_stack.contains("_NET_ACTIVE_WINDOW"));
+            assert!(payload
+                .x11_frontmost_api_stack
+                .contains("_NET_ACTIVE_WINDOW"));
         } else {
             assert!(payload.is_none());
         }

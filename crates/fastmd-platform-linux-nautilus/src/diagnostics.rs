@@ -11,7 +11,7 @@ pub const MONITOR_SELECTION_RUNTIME_NOTE: &str =
 pub const PREVIEW_PLACEMENT_RUNTIME_NOTE: &str =
     "Preview-placement diagnostics now emit the requested width tier and the applied 4:3 geometry after reposition-before-shrink rules run.";
 pub const EDIT_LIFECYCLE_RUNTIME_NOTE: &str =
-    "Edit-lifecycle diagnostics now emit whether inline edit lock is active, whether blur-close is armed, and the last emitted close reason.";
+    "Edit-lifecycle diagnostics now emit whether inline edit lock is active, whether blur-close is armed, whether attached-source saves are currently allowed, and the last emitted close reason.";
 
 pub fn display_server_label(display_server: Option<DisplayServerKind>) -> &'static str {
     match display_server {

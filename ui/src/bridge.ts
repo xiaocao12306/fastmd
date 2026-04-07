@@ -7,6 +7,7 @@ import type {
   CloseRequest,
   HostCapabilities,
   HotInteractionSurface,
+  LinuxEditLifecycleDiagnostic,
   LinuxProbePlans,
   LinuxRuntimeDiagnostics,
   PreviewGeometry,
@@ -156,6 +157,12 @@ export function readLinuxHoveredItemDiagnostic(
   capabilities: HostCapabilities,
 ): LinuxRuntimeDiagnostics["hoveredItem"] | null {
   return capabilities.linuxRuntimeDiagnostics?.hoveredItem ?? null;
+}
+
+export function readLinuxEditLifecycleDiagnostic(
+  capabilities: HostCapabilities,
+): LinuxEditLifecycleDiagnostic | null {
+  return capabilities.linuxRuntimeDiagnostics?.editLifecycle ?? null;
 }
 
 export function readLinuxHoverLifecycleDiagnostic(
