@@ -109,6 +109,21 @@ pub fn crate_slice_validation_notes() -> Vec<ValidationNote> {
             note: "The Nautilus adapter now classifies raw hover observations through the same Linux markdown filter used for path acceptance, so hover evidence and file acceptance run in one pipeline.",
         },
         ValidationNote {
+            item: "Confirm directory rejection after live Nautilus host probes are wired",
+            status: ValidationStatus::ImplementedInSlice,
+            note: "Live hovered-item probe outputs now feed the shared markdown filter, and unit tests confirm that directory paths from the AT-SPI hit-test path still reject before preview open.",
+        },
+        ValidationNote {
+            item: "Confirm missing-path rejection after live Nautilus host probes are wired",
+            status: ValidationStatus::ImplementedInSlice,
+            note: "Live hovered-item probe outputs now feed the shared markdown filter, and unit tests confirm that stale or missing paths from the AT-SPI hit-test path still reject before preview open.",
+        },
+        ValidationNote {
+            item: "Confirm unsupported-entity rejection after live Nautilus host probes are wired",
+            status: ValidationStatus::ImplementedInSlice,
+            note: "Live hovered-item probe outputs now preserve unsupported GTK entities and unit tests confirm that they still reject through the shared markdown filter before preview open.",
+        },
+        ValidationNote {
             item: "Implement the same hot interaction-surface behavior as macOS",
             status: ValidationStatus::ImplementedInSlice,
             note: "The shared Tauri shell reveals the preview with window focus, the shared frontend keeps the shell root focusable after re-renders, and Linux parity can now rely on one hot surface instead of pointer re-entry.",
@@ -156,12 +171,22 @@ pub fn crate_slice_validation_notes() -> Vec<ValidationNote> {
         ValidationNote {
             item: "Implement the same runtime diagnostics coverage as macOS where host APIs permit",
             status: ValidationStatus::BlockedByLowerLayers,
-            note: "The shell now emits structured Ubuntu diagnostics, but full macOS-equivalent runtime coverage still depends on live Nautilus host probes and shared-core hover wiring.",
+            note: "The shell now emits live frontmost and hovered-item Ubuntu diagnostics when a hover anchor is available, but full macOS-equivalent runtime coverage still depends on shared-core hover wiring and real-session validation.",
         },
         ValidationNote {
             item: "Emit Ubuntu-side diagnostics for frontmost gating, hovered-item resolution, monitor selection, preview placement, and edit lifecycle",
             status: ValidationStatus::ImplementedInSlice,
-            note: "The Linux adapter now defines one diagnostics vocabulary consumed by the Tauri shell and shared UI, with live frontmost and hovered-item fields marked pending until host probes are wired.",
+            note: "The Linux adapter now defines one diagnostics vocabulary consumed by the Tauri shell and shared UI, with live frontmost probes wired continuously and live hovered-item probes wired through the shared hover-anchor path.",
+        },
+        ValidationNote {
+            item: "Implement real Wayland probe plumbing behind the existing semantic guardrail",
+            status: ValidationStatus::ImplementedInSlice,
+            note: "Wayland now runs a live AT-SPI hovered-item hit-test probe that normalizes exact-item or hovered-row evidence through the same markdown filter and diagnostics path used elsewhere in the Linux adapter.",
+        },
+        ValidationNote {
+            item: "Implement real X11 probe plumbing behind the existing semantic guardrail",
+            status: ValidationStatus::ImplementedInSlice,
+            note: "X11 now runs the same live AT-SPI hovered-item hit-test probe and reuses the identical markdown-filter and diagnostics path, so the backend difference stays in host data gathering only.",
         },
     ]
 }

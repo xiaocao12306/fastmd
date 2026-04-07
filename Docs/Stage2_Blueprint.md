@@ -611,9 +611,9 @@ Checklist reset rule:
 - [ ] Validate exact hovered-item resolution on a real Ubuntu 24.04 X11 session
 - [x] Reject non-Markdown files, directories, and unsupported items with the same semantics as macOS
 - [x] Wire the current adapter-level rejection logic into the real Nautilus hovered-item pipeline
-- [ ] Confirm directory rejection after live Nautilus host probes are wired
-- [ ] Confirm missing-path rejection after live Nautilus host probes are wired
-- [ ] Confirm unsupported-entity rejection after live Nautilus host probes are wired
+- [x] Confirm directory rejection after live Nautilus host probes are wired
+- [x] Confirm missing-path rejection after live Nautilus host probes are wired
+- [x] Confirm unsupported-entity rejection after live Nautilus host probes are wired
 - [x] Implement Ubuntu multi-monitor coordinate handling with the same placement semantics as macOS
 - [x] Enumerate GNOME monitor work areas in a way that preserves the current macOS visible-frame semantics
 - [x] Convert pointer coordinates into the same desktop-space model used by shared core placement logic
@@ -621,8 +621,8 @@ Checklist reset rule:
 - [ ] Validate monitor selection and coordinate handling on a real Ubuntu 24.04 Wayland session
 - [ ] Validate monitor selection and coordinate handling on a real Ubuntu 24.04 X11 session
 - [x] Implement Wayland and X11 behavior handling without changing product semantics
-- [ ] Implement real Wayland probe plumbing behind the existing semantic guardrail
-- [ ] Implement real X11 probe plumbing behind the existing semantic guardrail
+- [x] Implement real Wayland probe plumbing behind the existing semantic guardrail
+- [x] Implement real X11 probe plumbing behind the existing semantic guardrail
 - [ ] Confirm that Wayland/X11 backend differences do not alter user-visible FastMD semantics
 - [ ] Implement preview opening on 1-second hover with the same semantics as macOS
 - [ ] Wire Ubuntu host signals into the shared 1-second hover debounce lifecycle

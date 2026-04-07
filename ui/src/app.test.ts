@@ -371,13 +371,23 @@ describe("FastMD shared preview shell", () => {
             note: "Wayland frontmost-gate diagnostics are emitted now.",
           },
           hoveredItem: {
-            status: "pending-live-probe",
+            status: "emitted",
             displayServer: "wayland",
             apiStack: "pointer=AT-SPI Component.GetAccessibleAtPoint(screen)",
+            backend: "live-atspi-wayland-hit-test",
+            resolutionScope: "hovered-row-descendant",
+            entityKind: "file",
             itemName: "third.md",
+            path: "/home/demo/Docs/third.md",
             pathSource: "hovered-row-label+parent-directory",
             visibleMarkdownPeerCount: 3,
-            note: "Wayland hovered-item diagnostics are emitted now.",
+            accepted: false,
+            rejection:
+              "hovered Nautilus item failed markdown acceptance: missing hovered path from HoveredRowLabelWithParentDirectory: /home/demo/Docs/third.md",
+            detail:
+              "Live Linux hovered-item probing classified the AT-SPI hit-test result through the shared markdown filter and kept the rejection detail for parity review.",
+            note:
+              "Wayland hovered-item diagnostics now run against a live AT-SPI hit-test at the supplied hover anchor; Ubuntu validation evidence is still required before parity sign-off.",
           },
           monitorSelection: {
             status: "emitted",
@@ -413,11 +423,20 @@ describe("FastMD shared preview shell", () => {
 
     expect(shell?.dataset.linuxDisplayServer).toBe("wayland");
     expect(shell?.dataset.linuxFrontmostGateStatus).toBe("pending-live-probe");
+    expect(shell?.dataset.linuxHoveredItemBackend).toBe("live-atspi-wayland-hit-test");
     expect(shell?.dataset.linuxHoveredItemApiStack).toContain(
       "AT-SPI Component.GetAccessibleAtPoint(screen)",
     );
+    expect(shell?.dataset.linuxHoveredItemResolutionScope).toBe("hovered-row-descendant");
+    expect(shell?.dataset.linuxHoveredItemEntityKind).toBe("file");
+    expect(shell?.dataset.linuxHoveredItemPath).toBe("/home/demo/Docs/third.md");
     expect(shell?.dataset.linuxHoveredItemPathSource).toBe(
       "hovered-row-label+parent-directory",
+    );
+    expect(shell?.dataset.linuxHoveredItemAccepted).toBe("false");
+    expect(shell?.dataset.linuxHoveredItemRejection).toContain("missing hovered path");
+    expect(shell?.dataset.linuxHoveredItemDetail).toContain(
+      "shared markdown filter",
     );
     expect(shell?.dataset.linuxHoveredItemItemName).toBe("third.md");
     expect(shell?.dataset.linuxHoveredItemVisibleMarkdownPeerCount).toBe("3");

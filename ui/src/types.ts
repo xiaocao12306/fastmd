@@ -4,6 +4,14 @@ export type RuntimeMode = "desktop" | "fallback";
 export type PermissionState = "granted" | "denied" | "unknown";
 export type FileManagerId = "finder" | "explorer" | "nautilus" | "unknown";
 export type CloseReason = "escape" | "focus-lost" | "outside-click" | "app-switch" | string;
+export type LinuxDiagnosticStatus = "pending-live-probe" | "emitted" | "probe-failed" | string;
+export type LinuxHoverResolutionScope =
+  | "exact-item-under-pointer"
+  | "hovered-row-descendant"
+  | "nearby-candidate"
+  | "first-visible-item"
+  | string;
+export type LinuxHoveredEntityKind = "file" | "directory" | "unsupported" | string;
 export type MarkdownFeature =
   | "heading"
   | "paragraph"
@@ -89,7 +97,7 @@ export interface PreviewGeometryRect {
 }
 
 export interface LinuxFrontmostGateDiagnostic {
-  status: string;
+  status: LinuxDiagnosticStatus;
   displayServer: string;
   backend?: string | null;
   apiStack: string;
@@ -104,23 +112,24 @@ export interface LinuxFrontmostGateDiagnostic {
 }
 
 export interface LinuxHoveredItemDiagnostic {
-  status: string;
+  status: LinuxDiagnosticStatus;
   displayServer: string;
   apiStack: string;
   backend?: string | null;
-  resolutionScope?: string | null;
-  entityKind?: string | null;
+  resolutionScope?: LinuxHoverResolutionScope | null;
+  entityKind?: LinuxHoveredEntityKind | null;
   itemName?: string | null;
   path?: string | null;
   pathSource?: string | null;
   visibleMarkdownPeerCount?: number | null;
   accepted?: boolean | null;
   rejection?: string | null;
+  detail?: string | null;
   note: string;
 }
 
 export interface LinuxMonitorSelectionDiagnostic {
-  status: string;
+  status: LinuxDiagnosticStatus;
   selectionPolicy: string;
   anchor?: ScreenPoint | null;
   selectedMonitorId?: string | null;
@@ -130,7 +139,7 @@ export interface LinuxMonitorSelectionDiagnostic {
 }
 
 export interface LinuxPreviewPlacementDiagnostic {
-  status: string;
+  status: LinuxDiagnosticStatus;
   policy: string;
   requestedWidth?: number | null;
   appliedGeometry?: PreviewGeometry | null;
@@ -138,7 +147,7 @@ export interface LinuxPreviewPlacementDiagnostic {
 }
 
 export interface LinuxEditLifecycleDiagnostic {
-  status: string;
+  status: LinuxDiagnosticStatus;
   policy: string;
   editing: boolean;
   closeOnBlurEnabled: boolean;

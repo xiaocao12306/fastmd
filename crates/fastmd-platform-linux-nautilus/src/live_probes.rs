@@ -1,14 +1,22 @@
+use std::path::PathBuf;
 use std::process::Command;
 
 use serde::Deserialize;
 
 use crate::adapter::FrontmostGate;
 use crate::error::AdapterError;
+use crate::filter::{HoverCandidateSource, LinuxMarkdownFilter};
 use crate::frontmost::{api_stack_for_display_server, resolve_frontmost_surface};
+use crate::geometry::ScreenPoint;
+use crate::hover::{
+    build_hovered_item_snapshot, classify_hovered_item_snapshot, HoverResolutionScope,
+    HoveredEntityKind, HoveredItemObservation, HoveredItemProbeOutcome, HoveredItemSnapshot,
+};
 use crate::probes::FrontmostAppSnapshot;
 use crate::target::{DisplayServerKind, SessionContext};
 
 const LINUX_FRONTMOST_PROBE: &str = "linux-frontmost-nautilus";
+const LINUX_HOVERED_ITEM_PROBE: &str = "linux-hovered-item-nautilus";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LiveFrontmostProbe {
@@ -56,6 +64,41 @@ pub fn classify_live_frontmost_gate() -> Result<(LiveFrontmostProbe, FrontmostGa
     };
 
     Ok((probe, gate))
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LiveHoveredItemProbe {
+    pub backend: String,
+    pub session: SessionContext,
+    pub point: ScreenPoint,
+    pub observation: HoveredItemObservation,
+    pub snapshot: HoveredItemSnapshot,
+}
+
+pub fn live_hovered_item(point: ScreenPoint) -> Result<Option<LiveHoveredItemProbe>, AdapterError> {
+    let session = current_session_context()?;
+    let Some(observation) = probe_hovered_item(&session, point)? else {
+        return Ok(None);
+    };
+    let snapshot = build_hovered_item_snapshot(observation.clone());
+
+    Ok(Some(LiveHoveredItemProbe {
+        backend: observation.backend.clone(),
+        session,
+        point,
+        observation,
+        snapshot,
+    }))
+}
+
+pub fn classify_live_hovered_item(
+    point: ScreenPoint,
+) -> Result<Option<(LiveHoveredItemProbe, HoveredItemProbeOutcome)>, AdapterError> {
+    let Some(probe) = live_hovered_item(point)? else {
+        return Ok(None);
+    };
+    let outcome = classify_hovered_item_snapshot(probe.snapshot.clone(), &LinuxMarkdownFilter);
+    Ok(Some((probe, outcome)))
 }
 
 fn current_session_context() -> Result<SessionContext, AdapterError> {
@@ -135,6 +178,33 @@ fn probe_frontmost_app(session: &SessionContext) -> Result<FrontmostAppSnapshot,
     }
 
     Ok(snapshot)
+}
+
+fn probe_hovered_item(
+    session: &SessionContext,
+    point: ScreenPoint,
+) -> Result<Option<HoveredItemObservation>, AdapterError> {
+    let x = point.x.round().to_string();
+    let y = point.y.round().to_string();
+    let stdout = run_command(
+        LINUX_HOVERED_ITEM_PROBE,
+        "python3",
+        &[
+            "-c",
+            AT_SPI_HOVERED_ITEM_PROBE_SCRIPT,
+            display_server_label(session.display_server),
+            &x,
+            &y,
+        ],
+    )?;
+    let Some(output) = parse_atspi_hovered_item_probe_output(&stdout)? else {
+        return Ok(None);
+    };
+
+    Ok(Some(hovered_item_observation_from_probe_output(
+        output,
+        session.display_server,
+    )))
 }
 
 fn probe_atspi_frontmost(
@@ -259,6 +329,190 @@ fn parse_atspi_frontmost_probe_output(
     Ok(probe)
 }
 
+fn parse_atspi_hovered_item_probe_output(
+    raw: &str,
+) -> Result<Option<AtspiHoveredItemProbeOutput>, AdapterError> {
+    let probe: AtspiHoveredItemProbeOutput =
+        serde_json::from_str(raw).map_err(|error| AdapterError::ProbeFailure {
+            probe: LINUX_HOVERED_ITEM_PROBE,
+            detail: format!("failed to parse AT-SPI hovered-item JSON: {error}"),
+        })?;
+
+    if probe.no_hit {
+        return Ok(None);
+    }
+
+    if let Some(error) = probe
+        .error
+        .as_deref()
+        .filter(|value| !value.trim().is_empty())
+    {
+        return Err(AdapterError::ProbeFailure {
+            probe: LINUX_HOVERED_ITEM_PROBE,
+            detail: error.to_owned(),
+        });
+    }
+
+    Ok(Some(probe))
+}
+
+fn hovered_item_observation_from_probe_output(
+    output: AtspiHoveredItemProbeOutput,
+    display_server: DisplayServerKind,
+) -> HoveredItemObservation {
+    let backend = hovered_item_backend(display_server).to_owned();
+    let absolute_path = normalize_optional_path(output.absolute_path);
+    let parent_directory = normalize_optional_path(output.parent_directory);
+    let item_name = normalize_optional_string(output.item_name);
+    let path_source = output
+        .path_source
+        .as_deref()
+        .and_then(hover_candidate_source_from_label)
+        .unwrap_or_else(|| default_hover_candidate_source(&absolute_path, &parent_directory));
+
+    let mut entity_kind = output
+        .entity_kind
+        .as_deref()
+        .and_then(hovered_entity_kind_from_label)
+        .unwrap_or_else(|| {
+            inferred_hovered_entity_kind(&absolute_path, &parent_directory, &item_name)
+        });
+    let resolution_scope = output
+        .resolution_scope
+        .as_deref()
+        .and_then(hover_resolution_scope_from_label)
+        .unwrap_or_else(|| inferred_hover_resolution_scope(&absolute_path, &parent_directory, &item_name));
+    let unsupported_description = normalize_optional_string(output.unsupported_description)
+        .or_else(|| {
+            output
+                .application_id
+                .as_deref()
+                .filter(|value| {
+                    !(FrontmostAppSnapshot {
+                        app_id: Some((*value).to_owned()),
+                        desktop_entry: None,
+                        window_class: None,
+                        executable: None,
+                        window_title: None,
+                        process_id: None,
+                        stable_surface_id: None,
+                    })
+                    .matches_nautilus()
+                })
+                .map(|value| format!("hovered AT-SPI hit-test resolved a non-Nautilus application: {value}"))
+        });
+    if unsupported_description.is_some() {
+        entity_kind = HoveredEntityKind::Unsupported;
+    }
+
+    HoveredItemObservation {
+        entity_kind,
+        resolution_scope,
+        backend,
+        absolute_path,
+        parent_directory,
+        item_name,
+        path_source,
+        visible_markdown_peer_count: output.visible_markdown_peer_count,
+        unsupported_description,
+    }
+}
+
+fn normalize_optional_string(raw: Option<String>) -> Option<String> {
+    raw.map(|value| value.trim().to_owned())
+        .filter(|value| !value.is_empty())
+}
+
+fn normalize_optional_path(raw: Option<String>) -> Option<PathBuf> {
+    normalize_optional_string(raw).map(PathBuf::from)
+}
+
+fn hovered_item_backend(display_server: DisplayServerKind) -> &'static str {
+    match display_server {
+        DisplayServerKind::Wayland => "live-atspi-wayland-hit-test",
+        DisplayServerKind::X11 => "live-atspi-x11-hit-test",
+    }
+}
+
+fn hover_resolution_scope_from_label(raw: &str) -> Option<HoverResolutionScope> {
+    match raw.trim() {
+        "exact-item-under-pointer" => Some(HoverResolutionScope::ExactItemUnderPointer),
+        "hovered-row-descendant" => Some(HoverResolutionScope::HoveredRowDescendant),
+        "nearby-candidate" => Some(HoverResolutionScope::NearbyCandidate),
+        "first-visible-item" => Some(HoverResolutionScope::FirstVisibleItem),
+        _ => None,
+    }
+}
+
+fn hovered_entity_kind_from_label(raw: &str) -> Option<HoveredEntityKind> {
+    match raw.trim() {
+        "file" => Some(HoveredEntityKind::File),
+        "directory" => Some(HoveredEntityKind::Directory),
+        "unsupported" => Some(HoveredEntityKind::Unsupported),
+        _ => None,
+    }
+}
+
+fn hover_candidate_source_from_label(raw: &str) -> Option<HoverCandidateSource> {
+    match raw.trim() {
+        "atspi-path-attribute" => Some(HoverCandidateSource::AtspiPathAttribute),
+        "atspi-uri-attribute" => Some(HoverCandidateSource::AtspiUriAttribute),
+        "hovered-row-label+parent-directory" => {
+            Some(HoverCandidateSource::HoveredRowLabelWithParentDirectory)
+        }
+        "validation-fixture" => Some(HoverCandidateSource::ValidationFixture),
+        _ => None,
+    }
+}
+
+fn default_hover_candidate_source(
+    absolute_path: &Option<PathBuf>,
+    parent_directory: &Option<PathBuf>,
+) -> HoverCandidateSource {
+    if absolute_path.is_some() {
+        HoverCandidateSource::AtspiPathAttribute
+    } else if parent_directory.is_some() {
+        HoverCandidateSource::HoveredRowLabelWithParentDirectory
+    } else {
+        HoverCandidateSource::AtspiPathAttribute
+    }
+}
+
+fn inferred_hovered_entity_kind(
+    absolute_path: &Option<PathBuf>,
+    parent_directory: &Option<PathBuf>,
+    item_name: &Option<String>,
+) -> HoveredEntityKind {
+    if absolute_path
+        .as_ref()
+        .is_some_and(|path| path.is_dir())
+        || parent_directory
+            .as_ref()
+            .zip(item_name.as_ref())
+            .is_some_and(|(parent, name)| parent.join(name).is_dir())
+    {
+        HoveredEntityKind::Directory
+    } else if absolute_path.is_some() || item_name.is_some() {
+        HoveredEntityKind::File
+    } else {
+        HoveredEntityKind::Unsupported
+    }
+}
+
+fn inferred_hover_resolution_scope(
+    absolute_path: &Option<PathBuf>,
+    parent_directory: &Option<PathBuf>,
+    item_name: &Option<String>,
+) -> HoverResolutionScope {
+    if absolute_path.is_some() {
+        HoverResolutionScope::ExactItemUnderPointer
+    } else if parent_directory.is_some() && item_name.is_some() {
+        HoverResolutionScope::HoveredRowDescendant
+    } else {
+        HoverResolutionScope::ExactItemUnderPointer
+    }
+}
+
 fn parse_x11_active_window_id(raw: &str) -> Option<String> {
     raw.split_once('#')
         .map(|(_, value)| value.trim())
@@ -331,6 +585,32 @@ struct AtspiFrontmostProbeOutput {
     stable_surface_id: Option<String>,
     #[serde(default)]
     window_title: Option<String>,
+    #[serde(default)]
+    error: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+struct AtspiHoveredItemProbeOutput {
+    #[serde(default)]
+    no_hit: bool,
+    #[serde(default)]
+    application_id: Option<String>,
+    #[serde(default)]
+    entity_kind: Option<String>,
+    #[serde(default)]
+    resolution_scope: Option<String>,
+    #[serde(default)]
+    absolute_path: Option<String>,
+    #[serde(default)]
+    parent_directory: Option<String>,
+    #[serde(default)]
+    item_name: Option<String>,
+    #[serde(default)]
+    path_source: Option<String>,
+    #[serde(default)]
+    visible_markdown_peer_count: Option<usize>,
+    #[serde(default)]
+    unsupported_description: Option<String>,
     #[serde(default)]
     error: Option<String>,
 }
@@ -448,8 +728,314 @@ print(json.dumps({
 }))
 "#;
 
+const AT_SPI_HOVERED_ITEM_PROBE_SCRIPT: &str = r#"
+import json
+import os
+import sys
+from urllib.parse import unquote, urlparse
+
+display_server = sys.argv[1] if len(sys.argv) > 1 else "unknown"
+try:
+    point_x = int(round(float(sys.argv[2]))) if len(sys.argv) > 2 else 0
+    point_y = int(round(float(sys.argv[3]))) if len(sys.argv) > 3 else 0
+except Exception:
+    point_x = 0
+    point_y = 0
+
+try:
+    import gi
+    gi.require_version("Atspi", "2.0")
+    from gi.repository import Atspi
+except Exception as error:
+    print(json.dumps({"error": f"failed to import gi.repository.Atspi: {error}"}))
+    sys.exit(0)
+
+def safe_call(obj, name, *args):
+    if obj is None:
+        return None
+    method = getattr(obj, name, None)
+    if not callable(method):
+        return None
+    try:
+        return method(*args)
+    except Exception:
+        return None
+
+def children(accessible):
+    count = safe_call(accessible, "get_child_count") or 0
+    try:
+        count = int(count)
+    except Exception:
+        count = 0
+    for index in range(count):
+        child = safe_call(accessible, "get_child_at_index", index)
+        if child is not None:
+            yield child
+
+def component_iface(accessible):
+    return safe_call(accessible, "get_component_iface")
+
+def contains_point(accessible, x, y):
+    component = component_iface(accessible)
+    if component is None:
+        return False
+    try:
+        return bool(component.contains(x, y, Atspi.CoordType.SCREEN))
+    except Exception:
+        return False
+
+def accessible_at_point(accessible, x, y):
+    component = component_iface(accessible)
+    if component is None:
+        return None
+    try:
+        return component.get_accessible_at_point(x, y, Atspi.CoordType.SCREEN)
+    except Exception:
+        return None
+
+def find_accessible_at_point(accessible, x, y, depth=0, visited=None):
+    if accessible is None or depth > 16:
+        return None
+    if visited is None:
+        visited = set()
+    marker = id(accessible)
+    if marker in visited:
+        return accessible
+    visited.add(marker)
+
+    if not contains_point(accessible, x, y):
+        return None
+
+    hit = accessible_at_point(accessible, x, y)
+    if hit is not None and hit != accessible:
+        deeper = find_accessible_at_point(hit, x, y, depth + 1, visited)
+        return deeper or hit
+
+    for child in children(accessible):
+        deeper = find_accessible_at_point(child, x, y, depth + 1, visited)
+        if deeper is not None:
+            return deeper
+
+    return accessible
+
+def ancestor_chain(accessible):
+    chain = []
+    cursor = accessible
+    for _ in range(24):
+        if cursor is None:
+            break
+        chain.append(cursor)
+        parent = safe_call(cursor, "get_parent")
+        if parent is None or parent == cursor:
+            break
+        cursor = parent
+    return chain
+
+def role_name(accessible):
+    return (safe_call(accessible, "get_role_name") or "").strip().lower()
+
+def accessible_name(accessible):
+    return (safe_call(accessible, "get_name") or "").strip() or None
+
+def attributes(accessible):
+    raw = safe_call(accessible, "get_attributes_as_array")
+    if raw is None:
+        raw = safe_call(accessible, "get_attributes")
+    if raw is None:
+        return {}
+
+    if isinstance(raw, dict):
+        return {
+            str(key).strip().lower(): str(value).strip()
+            for key, value in raw.items()
+            if str(value).strip()
+        }
+
+    result = {}
+    for entry in raw:
+        if entry is None:
+            continue
+        token = str(entry).strip()
+        if not token:
+            continue
+        separator = ":" if ":" in token else "=" if "=" in token else None
+        if separator is None:
+            continue
+        key, value = token.split(separator, 1)
+        key = key.strip().lower()
+        value = value.strip()
+        if key and value:
+            result[key] = value
+    return result
+
+def decode_path(raw):
+    if raw is None:
+        return None, None
+    value = str(raw).strip()
+    if not value:
+        return None, None
+    if value.startswith("file://"):
+        parsed = urlparse(value)
+        path = unquote(parsed.path or "")
+        if path:
+            return os.path.abspath(path), "atspi-uri-attribute"
+        return None, None
+    if value.startswith("/"):
+        return os.path.abspath(os.path.expanduser(value)), "atspi-path-attribute"
+    return None, None
+
+def path_from_attributes(attrs):
+    keys = (
+        "uri",
+        "document-uri",
+        "file-uri",
+        "target-uri",
+        "url",
+        "path",
+        "file-path",
+        "filepath",
+        "location",
+        "filename",
+        "current-folder",
+        "parent-directory",
+        "directory",
+    )
+    for key in keys:
+        if key not in attrs:
+            continue
+        path, source = decode_path(attrs.get(key))
+        if path:
+            return path, source
+    return None, None
+
+def row_like(accessible):
+    role = role_name(accessible)
+    return any(token in role for token in ("row", "list item", "list_item", "tree item", "icon"))
+
+def visible_markdown_peer_count(row):
+    if row is None:
+        return None
+    parent = safe_call(row, "get_parent")
+    if parent is None:
+        return None
+
+    count = 0
+    for child in children(parent):
+        name = (accessible_name(child) or "").lower()
+        if name.endswith(".md"):
+            count += 1
+            continue
+        for grandchild in children(child):
+            grandchild_name = (accessible_name(grandchild) or "").lower()
+            if grandchild_name.endswith(".md"):
+                count += 1
+                break
+
+    return count if count > 0 else None
+
+Atspi.init()
+desktop = Atspi.get_desktop(0)
+target = None
+for application in children(desktop):
+    target = find_accessible_at_point(application, point_x, point_y)
+    if target is not None:
+        break
+
+if target is None:
+    print(json.dumps({"no_hit": True}))
+    sys.exit(0)
+
+chain = ancestor_chain(target)
+application = safe_call(target, "get_application") or target
+application_id = safe_call(application, "get_id") or safe_call(application, "get_name")
+
+direct_path = None
+direct_source = None
+direct_depth = None
+row_node = None
+row_name = None
+parent_directory = None
+for depth, node in enumerate(chain):
+    attrs = attributes(node)
+    path, source = path_from_attributes(attrs)
+    if path and direct_path is None:
+        direct_path = path
+        direct_source = source
+        direct_depth = depth
+    if parent_directory is None and path:
+        candidate_directory = path if os.path.isdir(path) else os.path.dirname(path)
+        if candidate_directory:
+            parent_directory = os.path.abspath(candidate_directory)
+    if row_node is None and row_like(node):
+        row_node = node
+        row_name = accessible_name(node)
+
+if row_node is not None and parent_directory is None:
+    for node in chain:
+        attrs = attributes(node)
+        path, _ = path_from_attributes(attrs)
+        if path:
+            candidate_directory = path if os.path.isdir(path) else os.path.dirname(path)
+            if candidate_directory:
+                parent_directory = os.path.abspath(candidate_directory)
+                break
+
+item_name = accessible_name(target) or row_name
+resolution_scope = "exact-item-under-pointer"
+if direct_depth is not None and direct_depth > 0:
+    resolution_scope = "hovered-row-descendant"
+elif direct_path is None and row_node is not None and parent_directory and item_name:
+    resolution_scope = "hovered-row-descendant"
+
+absolute_path = direct_path
+path_source = direct_source or ("hovered-row-label+parent-directory" if parent_directory and item_name else None)
+
+entity_kind = "unsupported"
+unsupported_description = None
+candidate_path = absolute_path or (
+    os.path.abspath(os.path.join(parent_directory, item_name))
+    if parent_directory and item_name
+    else None
+)
+
+if candidate_path:
+    entity_kind = "directory" if os.path.isdir(candidate_path) else "file"
+elif item_name:
+    entity_kind = "file" if item_name.lower().endswith(".md") else "unsupported"
+
+if application_id and str(application_id).strip().lower() not in (
+    "org.gnome.nautilus",
+    "org.gnome.nautilus.desktop",
+    "nautilus",
+):
+    entity_kind = "unsupported"
+    unsupported_description = f"hovered AT-SPI hit-test resolved a non-Nautilus application: {application_id}"
+elif candidate_path is None and not (parent_directory and item_name):
+    entity_kind = "unsupported"
+    unsupported_description = (
+        f"hovered AT-SPI hit-test at {point_x},{point_y} did not expose a direct path "
+        "or a hovered Nautilus row that could be reconstructed into a file path"
+    )
+
+print(json.dumps({
+    "application_id": application_id,
+    "entity_kind": entity_kind,
+    "resolution_scope": resolution_scope,
+    "absolute_path": absolute_path,
+    "parent_directory": parent_directory,
+    "item_name": item_name,
+    "path_source": path_source,
+    "visible_markdown_peer_count": visible_markdown_peer_count(row_node),
+    "unsupported_description": unsupported_description,
+}))
+"#;
+
 #[cfg(test)]
 mod tests {
+    use std::fs;
+    use std::path::{Path, PathBuf};
+    use std::time::{SystemTime, UNIX_EPOCH};
+
     use super::*;
 
     #[test]
@@ -517,5 +1103,198 @@ _NET_WM_NAME(UTF8_STRING) = "Projects"
             parse_quoted_last_value(r#"(STRING) = "Files", "org.gnome.Nautilus""#),
             Some("org.gnome.Nautilus".to_owned())
         );
+    }
+
+    #[test]
+    fn hovered_item_probe_output_parses_no_hit_as_none() {
+        let raw = r#"{"no_hit": true}"#;
+
+        let parsed = parse_atspi_hovered_item_probe_output(raw).unwrap();
+
+        assert!(parsed.is_none());
+    }
+
+    #[test]
+    fn hovered_item_probe_output_parses_live_exact_path_fields() {
+        let raw = r#"{
+  "application_id": "org.gnome.Nautilus",
+  "entity_kind": "file",
+  "resolution_scope": "exact-item-under-pointer",
+  "absolute_path": "/home/demo/third.md",
+  "item_name": "third.md",
+  "path_source": "atspi-path-attribute",
+  "visible_markdown_peer_count": 3
+}"#;
+
+        let parsed = parse_atspi_hovered_item_probe_output(raw)
+            .unwrap()
+            .expect("hovered output should be present");
+        let observation =
+            hovered_item_observation_from_probe_output(parsed, DisplayServerKind::Wayland);
+
+        assert_eq!(observation.entity_kind, HoveredEntityKind::File);
+        assert_eq!(
+            observation.resolution_scope,
+            HoverResolutionScope::ExactItemUnderPointer
+        );
+        assert_eq!(
+            observation.absolute_path,
+            Some(PathBuf::from("/home/demo/third.md"))
+        );
+        assert_eq!(observation.path_source, HoverCandidateSource::AtspiPathAttribute);
+    }
+
+    #[test]
+    fn hovered_item_probe_output_reconstructs_hovered_row_candidates() {
+        let raw = r#"{
+  "application_id": "org.gnome.Nautilus",
+  "entity_kind": "file",
+  "resolution_scope": "hovered-row-descendant",
+  "parent_directory": "/home/demo/Docs",
+  "item_name": "third.md",
+  "path_source": "hovered-row-label+parent-directory",
+  "visible_markdown_peer_count": 3
+}"#;
+
+        let parsed = parse_atspi_hovered_item_probe_output(raw)
+            .unwrap()
+            .expect("hovered output should be present");
+        let observation =
+            hovered_item_observation_from_probe_output(parsed, DisplayServerKind::X11);
+        let snapshot = build_hovered_item_snapshot(observation);
+
+        assert_eq!(
+            snapshot.candidate,
+            crate::filter::HoverCandidate::LocalPath {
+                path: PathBuf::from("/home/demo/Docs/third.md"),
+                source: HoverCandidateSource::HoveredRowLabelWithParentDirectory,
+            }
+        );
+    }
+
+    #[test]
+    fn live_probe_output_confirms_directory_rejection_after_host_plumbing() {
+        let fixture = TempFixture::new();
+        let directory = fixture.create_directory("folder.md");
+
+        let observation = hovered_item_observation_from_probe_output(
+            AtspiHoveredItemProbeOutput {
+                no_hit: false,
+                application_id: Some("org.gnome.Nautilus".to_owned()),
+                entity_kind: Some("directory".to_owned()),
+                resolution_scope: Some("exact-item-under-pointer".to_owned()),
+                absolute_path: Some(directory.to_string_lossy().into_owned()),
+                parent_directory: None,
+                item_name: Some("folder.md".to_owned()),
+                path_source: Some("atspi-path-attribute".to_owned()),
+                visible_markdown_peer_count: Some(1),
+                unsupported_description: None,
+                error: None,
+            },
+            DisplayServerKind::Wayland,
+        );
+        let outcome =
+            classify_hovered_item_snapshot(build_hovered_item_snapshot(observation), &LinuxMarkdownFilter);
+
+        assert!(matches!(
+            outcome.rejection,
+            Some(crate::hover::HoveredItemResolutionRejection::CandidateRejected {
+                rejection: crate::filter::HoverCandidateRejection::Directory { .. }
+            })
+        ));
+    }
+
+    #[test]
+    fn live_probe_output_confirms_missing_path_rejection_after_host_plumbing() {
+        let missing = temp_path("missing.md");
+
+        let observation = hovered_item_observation_from_probe_output(
+            AtspiHoveredItemProbeOutput {
+                no_hit: false,
+                application_id: Some("org.gnome.Nautilus".to_owned()),
+                entity_kind: Some("file".to_owned()),
+                resolution_scope: Some("exact-item-under-pointer".to_owned()),
+                absolute_path: Some(missing.to_string_lossy().into_owned()),
+                parent_directory: None,
+                item_name: Some("missing.md".to_owned()),
+                path_source: Some("atspi-path-attribute".to_owned()),
+                visible_markdown_peer_count: Some(1),
+                unsupported_description: None,
+                error: None,
+            },
+            DisplayServerKind::Wayland,
+        );
+        let outcome =
+            classify_hovered_item_snapshot(build_hovered_item_snapshot(observation), &LinuxMarkdownFilter);
+
+        assert!(matches!(
+            outcome.rejection,
+            Some(crate::hover::HoveredItemResolutionRejection::CandidateRejected {
+                rejection: crate::filter::HoverCandidateRejection::MissingPath { .. }
+            })
+        ));
+    }
+
+    #[test]
+    fn live_probe_output_confirms_unsupported_entity_rejection_after_host_plumbing() {
+        let observation = hovered_item_observation_from_probe_output(
+            AtspiHoveredItemProbeOutput {
+                no_hit: false,
+                application_id: Some("org.gnome.Nautilus".to_owned()),
+                entity_kind: Some("unsupported".to_owned()),
+                resolution_scope: Some("exact-item-under-pointer".to_owned()),
+                absolute_path: None,
+                parent_directory: None,
+                item_name: None,
+                path_source: Some("atspi-path-attribute".to_owned()),
+                visible_markdown_peer_count: None,
+                unsupported_description: Some(
+                    "hovered GTK widget was not a Nautilus file row".to_owned(),
+                ),
+                error: None,
+            },
+            DisplayServerKind::X11,
+        );
+        let outcome =
+            classify_hovered_item_snapshot(build_hovered_item_snapshot(observation), &LinuxMarkdownFilter);
+
+        assert!(matches!(
+            outcome.rejection,
+            Some(crate::hover::HoveredItemResolutionRejection::CandidateRejected {
+                rejection: crate::filter::HoverCandidateRejection::UnsupportedItem { .. }
+            })
+        ));
+    }
+
+    struct TempFixture {
+        root: PathBuf,
+    }
+
+    impl TempFixture {
+        fn new() -> Self {
+            let root = temp_path("fixture-root");
+            fs::create_dir_all(&root).expect("temp fixture root should be created");
+            Self { root }
+        }
+
+        fn create_directory(&self, relative_path: impl AsRef<Path>) -> PathBuf {
+            let path = self.root.join(relative_path);
+            fs::create_dir_all(&path).expect("temp directory should be created");
+            path
+        }
+    }
+
+    impl Drop for TempFixture {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.root);
+        }
+    }
+
+    fn temp_path(name: &str) -> PathBuf {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system time should be after unix epoch")
+            .as_nanos();
+        std::env::temp_dir().join(format!("fastmd-live-probes-{nonce}-{name}"))
     }
 }

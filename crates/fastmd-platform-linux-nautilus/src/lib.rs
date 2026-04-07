@@ -45,7 +45,10 @@ pub use hover::{
     HoveredItemSnapshot, NautilusHoveredItemApi, NautilusHoveredItemApiStack,
     WAYLAND_HOVERED_ITEM_API_STACK, X11_HOVERED_ITEM_API_STACK,
 };
-pub use live_probes::{classify_live_frontmost_gate, live_frontmost_gate, LiveFrontmostProbe};
+pub use live_probes::{
+    classify_live_frontmost_gate, classify_live_hovered_item, live_frontmost_gate,
+    live_hovered_item, LiveFrontmostProbe, LiveHoveredItemProbe,
+};
 pub use probes::{
     FrontmostAppProbe, FrontmostAppSnapshot, HoveredItemProbe, MonitorProbe, NautilusProbeSuite,
     SessionProbe,

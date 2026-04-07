@@ -477,9 +477,16 @@ export class PreviewShellApp {
         "linuxFrontmostGateDetail",
         "linuxFrontmostGateNote",
         "linuxHoveredItemStatus",
+        "linuxHoveredItemBackend",
         "linuxHoveredItemApiStack",
+        "linuxHoveredItemResolutionScope",
+        "linuxHoveredItemEntityKind",
         "linuxHoveredItemNote",
+        "linuxHoveredItemDetail",
+        "linuxHoveredItemPath",
         "linuxHoveredItemPathSource",
+        "linuxHoveredItemAccepted",
+        "linuxHoveredItemRejection",
         "linuxHoveredItemItemName",
         "linuxHoveredItemVisibleMarkdownPeerCount",
         "linuxMonitorSelectionStatus",
@@ -521,9 +528,16 @@ export class PreviewShellApp {
     const hoveredItem = readLinuxHoveredItemDiagnostic(this.hostCapabilities);
     if (hoveredItem) {
       this.setShellData("linuxHoveredItemStatus", hoveredItem.status);
+      this.setShellData("linuxHoveredItemBackend", hoveredItem.backend);
       this.setShellData("linuxHoveredItemApiStack", hoveredItem.apiStack);
+      this.setShellData("linuxHoveredItemResolutionScope", hoveredItem.resolutionScope);
+      this.setShellData("linuxHoveredItemEntityKind", hoveredItem.entityKind);
       this.setShellData("linuxHoveredItemNote", hoveredItem.note);
+      this.setShellData("linuxHoveredItemDetail", hoveredItem.detail);
+      this.setShellData("linuxHoveredItemPath", hoveredItem.path);
       this.setShellData("linuxHoveredItemPathSource", hoveredItem.pathSource);
+      this.setShellData("linuxHoveredItemAccepted", hoveredItem.accepted);
+      this.setShellData("linuxHoveredItemRejection", hoveredItem.rejection);
       this.setShellData("linuxHoveredItemItemName", hoveredItem.itemName);
       this.setShellData(
         "linuxHoveredItemVisibleMarkdownPeerCount",

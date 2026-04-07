@@ -23,12 +23,14 @@ Implemented and unit-tested in this slice:
 - the authoritative Wayland/X11 frontmost Nautilus API stacks are encoded explicitly
 - live frontmost Nautilus probing now runs through AT-SPI on Wayland and AT-SPI plus `_NET_ACTIVE_WINDOW` on X11 before feeding the shared frontmost classifier
 - the authoritative Wayland/X11 hovered-item Nautilus API stacks are encoded explicitly
+- live hovered-item Nautilus probing now runs through an AT-SPI hit-test on both Wayland and X11 before feeding the shared hovered-item classifier
 - frontmost-file-manager gating only opens when the host snapshot matches Nautilus identifiers and carries a stable surface identity
 - accepted frontmost Nautilus surfaces preserve a stable host identity instead of trusting a generic active-window match
 - non-Nautilus or identity-less frontmost windows are rejected before hover resolution proceeds
 - hovered-item acceptance only allows exact hovered items or direct descendants of the hovered row
 - nearby candidates and first-visible-item fallbacks are rejected
 - non-Markdown paths, directories, relative paths, and unsupported entities are rejected
+- live hovered-item probe output is now confirmed to reject directories, missing paths, and unsupported GTK entities through the same markdown filter path used by the adapter
 - multi-monitor handling chooses the containing work area first and falls back to the nearest monitor only when the pointer is outside every work area
 - Wayland and X11 backend plans share one semantic guardrail so backend differences do not alter FastMD product behavior
 
@@ -44,6 +46,7 @@ Shared shell parity now covered outside this crate:
 - the shared preview shell keeps the same four width tiers as the macOS reference
 - the compact hint chip and desktop chrome copy now match the macOS shell instead of showing Linux-only helper text
 - the Ubuntu shell now advertises the same fastmd-render Stage 2 rendering contract the shared frontend consumes, and fastmd-render pins `ui/src/markdown.ts`, `ui/src/styles.css`, and `ui/src/app.ts` to the current macOS `MarkdownRenderer.swift` runtime and copy
+- the Ubuntu shell now surfaces live hovered-item diagnostics through the shared hover-anchor path, keeping rejected paths and unsupported entities visible in hidden shell metadata without changing user-visible product semantics
 - `Tab`, paged scrolling, and `Escape` close semantics are validated in the shared Tauri/UI lane
 - Linux blur-close handling now distinguishes `outside-click` from `app-switch` by re-checking the live frontmost Nautilus gate before the preview hides; edit lock still blocks both paths
 - inline edit entry still starts from the double-clicked rendered block that carries source-line metadata, matching the macOS shell

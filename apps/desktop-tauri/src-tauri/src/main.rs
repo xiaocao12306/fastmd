@@ -5,9 +5,10 @@ use std::{
 };
 
 use fastmd_platform_linux_nautilus::{
-    api_stack_for_display_server, classify_live_frontmost_gate, display_server_label,
-    frontmost_gate_pending_note, hovered_item_api_stack_for_display_server,
+    api_stack_for_display_server, classify_live_frontmost_gate, classify_live_hovered_item,
+    display_server_label, frontmost_gate_pending_note, hovered_item_api_stack_for_display_server,
     hovered_item_pending_note, DisplayServerKind, FrontmostAppSnapshot, FrontmostSurfaceRejection,
+    HoverCandidate, HoverResolutionScope, HoveredEntityKind, HoveredItemSnapshot,
     Monitor as PlatformMonitor, MonitorLayout as PlatformMonitorLayout,
     ScreenPoint as PlatformScreenPoint, ScreenRect as PlatformScreenRect,
     DIAGNOSTIC_STATUS_EMITTED, DIAGNOSTIC_STATUS_PENDING_LIVE_PROBE, EDIT_LIFECYCLE_POLICY,
@@ -192,7 +193,8 @@ struct LinuxHoveredItemDiagnosticPayload {
     visible_markdown_peer_count: Option<usize>,
     accepted: Option<bool>,
     rejection: Option<String>,
-    note: &'static str,
+    detail: Option<String>,
+    note: String,
 }
 
 #[derive(Clone, Serialize)]
@@ -508,7 +510,8 @@ fn linux_runtime_diagnostics_payload() -> Option<LinuxRuntimeDiagnosticsPayload>
             visible_markdown_peer_count: None,
             accepted: None,
             rejection: None,
-            note: hovered_item_pending_note(display_server),
+            detail: None,
+            note: hovered_item_pending_note(display_server).to_owned(),
         },
         monitor_selection: LinuxMonitorSelectionDiagnosticPayload {
             status: DIAGNOSTIC_STATUS_EMITTED,
@@ -703,6 +706,55 @@ fn linux_frontmost_probe_failure_note(display_server: Option<DisplayServerKind>)
     }
 }
 
+fn linux_hovered_item_live_note(display_server: DisplayServerKind) -> String {
+    match display_server {
+        DisplayServerKind::Wayland => {
+            "Wayland hovered-item diagnostics now run against a live AT-SPI hit-test at the supplied hover anchor; Ubuntu validation evidence is still required before parity sign-off.".to_owned()
+        }
+        DisplayServerKind::X11 => {
+            "X11 hovered-item diagnostics now run against a live AT-SPI hit-test at the supplied hover anchor; Ubuntu validation evidence is still required before parity sign-off.".to_owned()
+        }
+    }
+}
+
+fn linux_hovered_item_probe_failure_note(display_server: Option<DisplayServerKind>) -> String {
+    match display_server {
+        Some(DisplayServerKind::Wayland) => {
+            "Wayland hovered-item diagnostics attempted the live AT-SPI hit-test probe, but FastMD could not classify a hovered Nautilus item from the supplied anchor.".to_owned()
+        }
+        Some(DisplayServerKind::X11) => {
+            "X11 hovered-item diagnostics attempted the live AT-SPI hit-test probe, but FastMD could not classify a hovered Nautilus item from the supplied anchor.".to_owned()
+        }
+        None => {
+            "Linux hovered-item diagnostics could not run a live probe because the active display server is unresolved.".to_owned()
+        }
+    }
+}
+
+fn hover_resolution_scope_label(scope: HoverResolutionScope) -> &'static str {
+    match scope {
+        HoverResolutionScope::ExactItemUnderPointer => "exact-item-under-pointer",
+        HoverResolutionScope::HoveredRowDescendant => "hovered-row-descendant",
+        HoverResolutionScope::NearbyCandidate => "nearby-candidate",
+        HoverResolutionScope::FirstVisibleItem => "first-visible-item",
+    }
+}
+
+fn hovered_entity_kind_label(kind: HoveredEntityKind) -> &'static str {
+    match kind {
+        HoveredEntityKind::File => "file",
+        HoveredEntityKind::Directory => "directory",
+        HoveredEntityKind::Unsupported => "unsupported",
+    }
+}
+
+fn hovered_candidate_path(snapshot: &HoveredItemSnapshot) -> Option<String> {
+    match &snapshot.candidate {
+        HoverCandidate::LocalPath { path, .. } => Some(path_string(path)),
+        HoverCandidate::UnsupportedItem { .. } => None,
+    }
+}
+
 fn linux_blur_close_reason(
     is_open: bool,
     rejection: Option<&FrontmostSurfaceRejection>,
@@ -842,6 +894,120 @@ fn refresh_linux_frontmost_gate_diagnostics(
     match refresh {
         FrontmostGateRefresh::Live { reason, .. } => Some(reason),
         FrontmostGateRefresh::ProbeFailed { .. } => Some("focus-lost".to_owned()),
+    }
+}
+
+fn refresh_linux_hovered_item_diagnostics(
+    host_capabilities: &mut HostCapabilitiesPayload,
+    anchor: Option<ScreenPoint>,
+) {
+    if !cfg!(target_os = "linux") {
+        return;
+    }
+
+    let display_server = detected_linux_display_server();
+    let Some(diagnostics) = host_capabilities.linux_runtime_diagnostics.as_mut() else {
+        return;
+    };
+
+    diagnostics.display_server = display_server_label(display_server);
+    diagnostics.hovered_item.display_server = display_server_label(display_server);
+
+    let Some(anchor) = anchor else {
+        diagnostics.hovered_item.status = DIAGNOSTIC_STATUS_PENDING_LIVE_PROBE;
+        diagnostics.hovered_item.backend = None;
+        diagnostics.hovered_item.api_stack = active_hovered_item_api_stack_summary(display_server);
+        diagnostics.hovered_item.resolution_scope = None;
+        diagnostics.hovered_item.entity_kind = None;
+        diagnostics.hovered_item.item_name = None;
+        diagnostics.hovered_item.path = None;
+        diagnostics.hovered_item.path_source = None;
+        diagnostics.hovered_item.visible_markdown_peer_count = None;
+        diagnostics.hovered_item.accepted = None;
+        diagnostics.hovered_item.rejection = None;
+        diagnostics.hovered_item.detail = None;
+        diagnostics.hovered_item.note = hovered_item_pending_note(display_server).to_owned();
+        return;
+    };
+
+    match classify_live_hovered_item(platform_screen_point(anchor)) {
+        Ok(Some((probe, outcome))) => {
+            let snapshot = &outcome.snapshot;
+            let probe_display_server = probe.session.display_server;
+            let probe_backend = probe.backend.clone();
+            diagnostics.display_server = display_server_label(Some(probe_display_server));
+            diagnostics.hovered_item.status = DIAGNOSTIC_STATUS_EMITTED;
+            diagnostics.hovered_item.display_server = display_server_label(Some(probe_display_server));
+            diagnostics.hovered_item.api_stack =
+                hovered_item_api_stack_for_display_server(probe_display_server).diagnostic_summary();
+            diagnostics.hovered_item.backend = Some(probe_backend);
+            diagnostics.hovered_item.resolution_scope =
+                Some(hover_resolution_scope_label(snapshot.resolution_scope).to_owned());
+            diagnostics.hovered_item.entity_kind =
+                Some(hovered_entity_kind_label(snapshot.entity_kind).to_owned());
+            diagnostics.hovered_item.item_name = snapshot.item_name.clone();
+            diagnostics.hovered_item.path = outcome
+                .accepted
+                .as_ref()
+                .map(|accepted| path_string(accepted.path()))
+                .or_else(|| hovered_candidate_path(snapshot));
+            diagnostics.hovered_item.path_source = Some(snapshot.path_source.label().to_owned());
+            diagnostics.hovered_item.visible_markdown_peer_count =
+                snapshot.visible_markdown_peer_count;
+            diagnostics.hovered_item.accepted = Some(outcome.accepted.is_some());
+            diagnostics.hovered_item.rejection =
+                outcome.rejection.as_ref().map(ToString::to_string);
+            diagnostics.hovered_item.detail = Some(match outcome.accepted.as_ref() {
+                Some(accepted) => format!(
+                    "Live Linux hovered-item probing resolved {} through the shared markdown filter.",
+                    accepted.path().display()
+                ),
+                None => "Live Linux hovered-item probing classified the AT-SPI hit-test result through the shared markdown filter and kept the rejection detail for parity review.".to_owned(),
+            });
+            diagnostics.hovered_item.note = linux_hovered_item_live_note(probe_display_server);
+        }
+        Ok(None) => {
+            diagnostics.hovered_item.status = DIAGNOSTIC_STATUS_EMITTED;
+            diagnostics.hovered_item.display_server = display_server_label(display_server);
+            diagnostics.hovered_item.api_stack = active_hovered_item_api_stack_summary(display_server);
+            diagnostics.hovered_item.backend = display_server.map(|display_server| {
+                match display_server {
+                    DisplayServerKind::Wayland => "live-atspi-wayland-hit-test".to_owned(),
+                    DisplayServerKind::X11 => "live-atspi-x11-hit-test".to_owned(),
+                }
+            });
+            diagnostics.hovered_item.resolution_scope = None;
+            diagnostics.hovered_item.entity_kind = None;
+            diagnostics.hovered_item.item_name = None;
+            diagnostics.hovered_item.path = None;
+            diagnostics.hovered_item.path_source = None;
+            diagnostics.hovered_item.visible_markdown_peer_count = None;
+            diagnostics.hovered_item.accepted = Some(false);
+            diagnostics.hovered_item.rejection = None;
+            diagnostics.hovered_item.detail = Some(
+                "Live Linux hovered-item probing found no AT-SPI accessible under the supplied hover anchor."
+                    .to_owned(),
+            );
+            diagnostics.hovered_item.note =
+                linux_hovered_item_probe_failure_note(display_server);
+        }
+        Err(error) => {
+            diagnostics.hovered_item.status = "probe-failed";
+            diagnostics.hovered_item.display_server = display_server_label(display_server);
+            diagnostics.hovered_item.api_stack = active_hovered_item_api_stack_summary(display_server);
+            diagnostics.hovered_item.backend = None;
+            diagnostics.hovered_item.resolution_scope = None;
+            diagnostics.hovered_item.entity_kind = None;
+            diagnostics.hovered_item.item_name = None;
+            diagnostics.hovered_item.path = None;
+            diagnostics.hovered_item.path_source = None;
+            diagnostics.hovered_item.visible_markdown_peer_count = None;
+            diagnostics.hovered_item.accepted = None;
+            diagnostics.hovered_item.rejection = None;
+            diagnostics.hovered_item.detail = Some(error.to_string());
+            diagnostics.hovered_item.note =
+                linux_hovered_item_probe_failure_note(display_server);
+        }
     }
 }
 
@@ -1077,13 +1243,12 @@ fn apply_preview_geometry_internal(
     state: &ShellBridgeState,
     anchor: Option<ScreenPoint>,
 ) -> Result<PreviewGeometryPayload, String> {
-    let effective_anchor = match anchor {
-        Some(anchor) => {
-            *state.last_anchor.lock().unwrap() = Some(anchor);
-            anchor
-        }
-        None => current_anchor_or_monitor_center(window, state)?,
-    };
+    if let Some(anchor) = anchor {
+        *state.last_anchor.lock().unwrap() = Some(anchor);
+    }
+    let remembered_hover_anchor = *state.last_anchor.lock().unwrap();
+    let effective_anchor = remembered_hover_anchor
+        .unwrap_or(current_anchor_or_monitor_center(window, state)?);
     let selected_work_area = preview_work_area_for_anchor(window, effective_anchor)?;
 
     let requested_width = {
@@ -1121,6 +1286,7 @@ fn apply_preview_geometry_internal(
             requested_width,
             &geometry,
         );
+        refresh_linux_hovered_item_diagnostics(&mut host_capabilities, remembered_hover_anchor);
     }
 
     Ok(geometry)
