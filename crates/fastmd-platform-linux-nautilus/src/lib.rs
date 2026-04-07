@@ -15,6 +15,7 @@ pub mod filter;
 pub mod frontmost;
 pub mod geometry;
 pub mod hover;
+pub mod live_probes;
 pub mod probes;
 pub mod target;
 pub mod validation;
@@ -44,6 +45,7 @@ pub use hover::{
     HoveredItemSnapshot, NautilusHoveredItemApi, NautilusHoveredItemApiStack,
     WAYLAND_HOVERED_ITEM_API_STACK, X11_HOVERED_ITEM_API_STACK,
 };
+pub use live_probes::{classify_live_frontmost_gate, live_frontmost_gate, LiveFrontmostProbe};
 pub use probes::{
     FrontmostAppProbe, FrontmostAppSnapshot, HoveredItemProbe, MonitorProbe, NautilusProbeSuite,
     SessionProbe,

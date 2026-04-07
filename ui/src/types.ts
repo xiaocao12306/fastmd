@@ -91,11 +91,15 @@ export interface PreviewGeometryRect {
 export interface LinuxFrontmostGateDiagnostic {
   status: string;
   displayServer: string;
+  backend?: string | null;
   apiStack: string;
   observedIdentifier?: string | null;
   stableSurfaceId?: string | null;
+  windowTitle?: string | null;
+  processId?: number | null;
   isOpen?: boolean | null;
   rejection?: string | null;
+  detail?: string | null;
   note: string;
 }
 

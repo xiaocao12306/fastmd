@@ -21,6 +21,7 @@ Not claimed:
 Implemented and unit-tested in this slice:
 
 - the authoritative Wayland/X11 frontmost Nautilus API stacks are encoded explicitly
+- live frontmost Nautilus probing now runs through AT-SPI on Wayland and AT-SPI plus `_NET_ACTIVE_WINDOW` on X11 before feeding the shared frontmost classifier
 - the authoritative Wayland/X11 hovered-item Nautilus API stacks are encoded explicitly
 - frontmost-file-manager gating only opens when the host snapshot matches Nautilus identifiers and carries a stable surface identity
 - accepted frontmost Nautilus surfaces preserve a stable host identity instead of trusting a generic active-window match
@@ -36,6 +37,7 @@ Not yet proven in this slice:
 - live Ubuntu 24.04 GNOME Files probing on a real Wayland session
 - live Ubuntu 24.04 GNOME Files probing on a real X11 session
 - end-to-end parity with macOS preview opening, paging, rendering, editing, and close behavior
+- Rust-side validation on this worker host, because the local macOS Rosetta/linker path aborts before `cargo test` can complete
 
 Shared shell parity now covered outside this crate:
 
@@ -43,6 +45,7 @@ Shared shell parity now covered outside this crate:
 - the compact hint chip and desktop chrome copy now match the macOS shell instead of showing Linux-only helper text
 - the Ubuntu shell now advertises the same fastmd-render Stage 2 rendering contract the shared frontend consumes, and fastmd-render pins `ui/src/markdown.ts`, `ui/src/styles.css`, and `ui/src/app.ts` to the current macOS `MarkdownRenderer.swift` runtime and copy
 - `Tab`, paged scrolling, and `Escape` close semantics are validated in the shared Tauri/UI lane
+- Linux blur-close handling now distinguishes `outside-click` from `app-switch` by re-checking the live frontmost Nautilus gate before the preview hides; edit lock still blocks both paths
 - inline edit entry still starts from the double-clicked rendered block that carries source-line metadata, matching the macOS shell
 - inline edit source extraction still uses the same start-line/end-line block mapping model as the macOS shell
 - attached-source saves now write Markdown back to the attached file in the shared Tauri shell, while cancel leaves the file untouched

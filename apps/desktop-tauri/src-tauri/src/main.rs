@@ -5,8 +5,9 @@ use std::{
 };
 
 use fastmd_platform_linux_nautilus::{
-    api_stack_for_display_server, display_server_label, frontmost_gate_pending_note,
-    hovered_item_api_stack_for_display_server, hovered_item_pending_note, DisplayServerKind,
+    api_stack_for_display_server, classify_live_frontmost_gate, display_server_label,
+    frontmost_gate_pending_note, hovered_item_api_stack_for_display_server,
+    hovered_item_pending_note, DisplayServerKind, FrontmostAppSnapshot, FrontmostSurfaceRejection,
     Monitor as PlatformMonitor, MonitorLayout as PlatformMonitorLayout,
     ScreenPoint as PlatformScreenPoint, ScreenRect as PlatformScreenRect,
     DIAGNOSTIC_STATUS_EMITTED, DIAGNOSTIC_STATUS_PENDING_LIVE_PROBE, EDIT_LIFECYCLE_POLICY,
@@ -164,12 +165,16 @@ struct LinuxPreviewPlacementPayload {
 struct LinuxFrontmostGateDiagnosticPayload {
     status: &'static str,
     display_server: &'static str,
+    backend: Option<String>,
     api_stack: String,
     observed_identifier: Option<String>,
     stable_surface_id: Option<String>,
+    window_title: Option<String>,
+    process_id: Option<u32>,
     is_open: Option<bool>,
     rejection: Option<String>,
-    note: &'static str,
+    detail: Option<String>,
+    note: String,
 }
 
 #[derive(Clone, Serialize)]
@@ -319,6 +324,7 @@ fn initial_host_capabilities(shell_state: &ShellStatePayload) -> HostCapabilitie
         linux_runtime_diagnostics: linux_runtime_diagnostics_payload(),
     };
     refresh_edit_persistence_capability(&mut host_capabilities, shell_state);
+    refresh_linux_frontmost_gate_diagnostics(&mut host_capabilities);
     host_capabilities
 }
 
@@ -478,12 +484,16 @@ fn linux_runtime_diagnostics_payload() -> Option<LinuxRuntimeDiagnosticsPayload>
         frontmost_gate: LinuxFrontmostGateDiagnosticPayload {
             status: DIAGNOSTIC_STATUS_PENDING_LIVE_PROBE,
             display_server: display_server_label,
+            backend: None,
             api_stack: active_frontmost_api_stack_summary(display_server),
             observed_identifier: None,
             stable_surface_id: None,
+            window_title: None,
+            process_id: None,
             is_open: None,
             rejection: None,
-            note: frontmost_gate_pending_note(display_server),
+            detail: None,
+            note: frontmost_gate_pending_note(display_server).to_owned(),
         },
         hovered_item: LinuxHoveredItemDiagnosticPayload {
             status: DIAGNOSTIC_STATUS_PENDING_LIVE_PROBE,
@@ -657,6 +667,182 @@ fn refresh_edit_persistence_capability(
         .unwrap_or(false);
     host_capabilities.can_persist_preview_edits = can_persist_preview_edits(shell_state);
     update_linux_edit_lifecycle_diagnostics(host_capabilities, editing, None);
+}
+
+fn observed_frontmost_identifier(frontmost_app: &FrontmostAppSnapshot) -> Option<String> {
+    frontmost_app
+        .app_id
+        .clone()
+        .or(frontmost_app.desktop_entry.clone())
+        .or(frontmost_app.window_class.clone())
+        .or(frontmost_app.executable.clone())
+}
+
+fn linux_frontmost_live_note(display_server: DisplayServerKind) -> String {
+    match display_server {
+        DisplayServerKind::Wayland => {
+            "Wayland frontmost-gate diagnostics now run against the live AT-SPI focus probe; Ubuntu validation evidence is still required before parity sign-off.".to_owned()
+        }
+        DisplayServerKind::X11 => {
+            "X11 frontmost-gate diagnostics now run against the live AT-SPI plus _NET_ACTIVE_WINDOW probe path; Ubuntu validation evidence is still required before parity sign-off.".to_owned()
+        }
+    }
+}
+
+fn linux_frontmost_probe_failure_note(display_server: Option<DisplayServerKind>) -> String {
+    match display_server {
+        Some(DisplayServerKind::Wayland) => {
+            "Wayland frontmost-gate diagnostics attempted the live AT-SPI focus probe, but FastMD fell back to generic blur-close handling because the host probe failed.".to_owned()
+        }
+        Some(DisplayServerKind::X11) => {
+            "X11 frontmost-gate diagnostics attempted the live AT-SPI plus _NET_ACTIVE_WINDOW probe path, but FastMD fell back to generic blur-close handling because the host probe failed.".to_owned()
+        }
+        None => {
+            "Linux frontmost-gate diagnostics could not run a live probe because the active display server is unresolved.".to_owned()
+        }
+    }
+}
+
+fn linux_blur_close_reason(
+    is_open: bool,
+    rejection: Option<&FrontmostSurfaceRejection>,
+) -> &'static str {
+    if is_open {
+        "outside-click"
+    } else if matches!(
+        rejection,
+        Some(FrontmostSurfaceRejection::NonNautilusApp { .. })
+    ) {
+        "app-switch"
+    } else {
+        "focus-lost"
+    }
+}
+
+fn refresh_linux_frontmost_gate_diagnostics(
+    host_capabilities: &mut HostCapabilitiesPayload,
+) -> Option<String> {
+    if !cfg!(target_os = "linux") {
+        return None;
+    }
+
+    let display_server = detected_linux_display_server();
+    enum FrontmostGateRefresh {
+        Live {
+            frontmost_file_manager: &'static str,
+            reason: String,
+            diagnostics_display_server: &'static str,
+            backend: String,
+            api_stack: String,
+            observed_identifier: Option<String>,
+            stable_surface_id: Option<String>,
+            window_title: Option<String>,
+            process_id: Option<u32>,
+            is_open: bool,
+            rejection: Option<String>,
+            detail: String,
+            note: String,
+        },
+        ProbeFailed {
+            detail: String,
+            note: String,
+        },
+    }
+
+    let refresh = match classify_live_frontmost_gate() {
+        Ok((probe, gate)) => FrontmostGateRefresh::Live {
+            frontmost_file_manager: if gate.is_open { "nautilus" } else { "unknown" },
+            reason: linux_blur_close_reason(gate.is_open, gate.rejection.as_ref()).to_owned(),
+            diagnostics_display_server: display_server_label(Some(gate.session.display_server)),
+            backend: probe.backend,
+            api_stack: gate.api_stack.diagnostic_summary(),
+            observed_identifier: gate
+                .detected_surface
+                .as_ref()
+                .map(|surface| surface.observed_identifier.clone())
+                .or_else(|| observed_frontmost_identifier(&gate.frontmost_app)),
+            stable_surface_id: gate
+                .detected_surface
+                .as_ref()
+                .map(|surface| surface.stable_identity.native_surface_id.clone())
+                .or_else(|| gate.frontmost_app.stable_surface_id.clone()),
+            window_title: gate.frontmost_app.window_title.clone(),
+            process_id: gate.frontmost_app.process_id,
+            is_open: gate.is_open,
+            rejection: gate.rejection.as_ref().map(ToString::to_string),
+            detail: if gate.is_open {
+                "Live Linux frontmost probing kept Nautilus as the foreground gate.".to_owned()
+            } else {
+                "Live Linux frontmost probing rejected the foreground surface before close-reason inference.".to_owned()
+            },
+            note: linux_frontmost_live_note(gate.session.display_server),
+        },
+        Err(error) => FrontmostGateRefresh::ProbeFailed {
+            detail: error.to_string(),
+            note: linux_frontmost_probe_failure_note(display_server),
+        },
+    };
+
+    match &refresh {
+        FrontmostGateRefresh::Live {
+            frontmost_file_manager,
+            diagnostics_display_server,
+            backend,
+            api_stack,
+            observed_identifier,
+            stable_surface_id,
+            window_title,
+            process_id,
+            is_open,
+            rejection,
+            detail,
+            note,
+            ..
+        } => {
+            host_capabilities.frontmost_file_manager = *frontmost_file_manager;
+            let Some(diagnostics) = host_capabilities.linux_runtime_diagnostics.as_mut() else {
+                return None;
+            };
+            diagnostics.display_server = *diagnostics_display_server;
+            diagnostics.frontmost_gate.status = DIAGNOSTIC_STATUS_EMITTED;
+            diagnostics.frontmost_gate.display_server = *diagnostics_display_server;
+            diagnostics.frontmost_gate.backend = Some(backend.clone());
+            diagnostics.frontmost_gate.api_stack = api_stack.clone();
+            diagnostics.frontmost_gate.observed_identifier = observed_identifier.clone();
+            diagnostics.frontmost_gate.stable_surface_id = stable_surface_id.clone();
+            diagnostics.frontmost_gate.window_title = window_title.clone();
+            diagnostics.frontmost_gate.process_id = *process_id;
+            diagnostics.frontmost_gate.is_open = Some(*is_open);
+            diagnostics.frontmost_gate.rejection = rejection.clone();
+            diagnostics.frontmost_gate.detail = Some(detail.clone());
+            diagnostics.frontmost_gate.note = note.clone();
+        }
+        FrontmostGateRefresh::ProbeFailed { detail, note } => {
+            host_capabilities.frontmost_file_manager = "unknown";
+            let Some(diagnostics) = host_capabilities.linux_runtime_diagnostics.as_mut() else {
+                return None;
+            };
+            diagnostics.display_server = display_server_label(display_server);
+            diagnostics.frontmost_gate.status = "probe-failed";
+            diagnostics.frontmost_gate.display_server = display_server_label(display_server);
+            diagnostics.frontmost_gate.backend = None;
+            diagnostics.frontmost_gate.api_stack =
+                active_frontmost_api_stack_summary(display_server);
+            diagnostics.frontmost_gate.observed_identifier = None;
+            diagnostics.frontmost_gate.stable_surface_id = None;
+            diagnostics.frontmost_gate.window_title = None;
+            diagnostics.frontmost_gate.process_id = None;
+            diagnostics.frontmost_gate.is_open = None;
+            diagnostics.frontmost_gate.rejection = None;
+            diagnostics.frontmost_gate.detail = Some(detail.clone());
+            diagnostics.frontmost_gate.note = note.clone();
+        }
+    }
+
+    match refresh {
+        FrontmostGateRefresh::Live { reason, .. } => Some(reason),
+        FrontmostGateRefresh::ProbeFailed { .. } => Some("focus-lost".to_owned()),
+    }
 }
 
 fn screen_rect_payload(rect: PlatformScreenRect) -> ScreenRectPayload {
@@ -962,6 +1148,7 @@ fn set_editing_state(
         let mut host_capabilities = state.host_capabilities.lock().unwrap();
         host_capabilities.close_on_blur_enabled = !editing;
         update_linux_edit_lifecycle_diagnostics(&mut host_capabilities, editing, None);
+        refresh_linux_frontmost_gate_diagnostics(&mut host_capabilities);
     }
     emit_host_capabilities(&app, &state)
 }
@@ -1145,22 +1332,24 @@ fn main() {
                 if !should_close {
                     return;
                 }
+                let reason = {
+                    let mut host_capabilities = state.host_capabilities.lock().unwrap();
+                    refresh_linux_frontmost_gate_diagnostics(&mut host_capabilities)
+                        .unwrap_or_else(|| "focus-lost".to_owned())
+                };
                 {
                     let mut host_capabilities = state.host_capabilities.lock().unwrap();
                     update_linux_edit_lifecycle_diagnostics(
                         &mut host_capabilities,
                         false,
-                        Some("focus-lost".to_owned()),
+                        Some(reason.clone()),
                     );
                 }
                 let _ = emit_host_capabilities(window.app_handle(), &state);
                 let _ = window.hide();
-                let _ = window.app_handle().emit(
-                    CLOSE_REQUESTED_EVENT,
-                    CloseRequestPayload {
-                        reason: "focus-lost".to_owned(),
-                    },
-                );
+                let _ = window
+                    .app_handle()
+                    .emit(CLOSE_REQUESTED_EVENT, CloseRequestPayload { reason });
             }
         })
         .setup(|app| {
@@ -1241,6 +1430,40 @@ mod tests {
                 .linux_runtime_diagnostics
                 .is_some(),
             cfg!(target_os = "linux")
+        );
+    }
+
+    #[test]
+    fn linux_blur_reason_uses_outside_click_for_an_open_nautilus_gate() {
+        assert_eq!(linux_blur_close_reason(true, None), "outside-click");
+    }
+
+    #[test]
+    fn linux_blur_reason_uses_app_switch_when_the_foreground_is_not_nautilus() {
+        assert_eq!(
+            linux_blur_close_reason(
+                false,
+                Some(&FrontmostSurfaceRejection::NonNautilusApp {
+                    app_id: Some("org.gnome.Terminal".to_owned()),
+                    desktop_entry: None,
+                    window_class: None,
+                    executable: Some("gnome-terminal".to_owned()),
+                }),
+            ),
+            "app-switch"
+        );
+    }
+
+    #[test]
+    fn linux_blur_reason_falls_back_when_a_stable_surface_id_is_missing() {
+        assert_eq!(
+            linux_blur_close_reason(
+                false,
+                Some(&FrontmostSurfaceRejection::MissingStableSurfaceId {
+                    display_server: DisplayServerKind::Wayland,
+                }),
+            ),
+            "focus-lost"
         );
     }
 

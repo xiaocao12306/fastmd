@@ -140,6 +140,12 @@ export function readLinuxRuntimeDiagnostics(
   return capabilities.linuxRuntimeDiagnostics ?? null;
 }
 
+export function readLinuxFrontmostGateDiagnostic(
+  capabilities: HostCapabilities,
+): LinuxRuntimeDiagnostics["frontmostGate"] | null {
+  return capabilities.linuxRuntimeDiagnostics?.frontmostGate ?? null;
+}
+
 export function readLinuxHoveredItemDiagnostic(
   capabilities: HostCapabilities,
 ): LinuxRuntimeDiagnostics["hoveredItem"] | null {

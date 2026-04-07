@@ -69,8 +69,7 @@ mod tests {
         assert!(frontmost_gate_pending_note(Some(DisplayServerKind::X11)).contains("X11"));
         assert!(hovered_item_pending_note(Some(DisplayServerKind::Wayland)).contains("Wayland"));
         assert!(hovered_item_pending_note(Some(DisplayServerKind::X11)).contains("X11"));
-        assert!(hovered_item_pending_note(Some(DisplayServerKind::Wayland)).contains(
-            "path reconstruction plus markdown filtering"
-        ));
+        assert!(hovered_item_pending_note(Some(DisplayServerKind::Wayland))
+            .contains("path reconstruction plus markdown filtering"));
     }
 }

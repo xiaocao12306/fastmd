@@ -289,7 +289,10 @@ mod tests {
                 source: HoverCandidateSource::ValidationFixture,
             })
             .expect_err("missing path should be rejected");
-        assert!(matches!(missing, HoverCandidateRejection::MissingPath { .. }));
+        assert!(matches!(
+            missing,
+            HoverCandidateRejection::MissingPath { .. }
+        ));
 
         let relative = filter
             .accept_candidate(HoverCandidate::LocalPath {
@@ -297,7 +300,10 @@ mod tests {
                 source: HoverCandidateSource::ValidationFixture,
             })
             .expect_err("relative path should be rejected");
-        assert!(matches!(relative, HoverCandidateRejection::RelativePath { .. }));
+        assert!(matches!(
+            relative,
+            HoverCandidateRejection::RelativePath { .. }
+        ));
 
         let unsupported_extension = filter
             .accept_candidate(HoverCandidate::LocalPath {

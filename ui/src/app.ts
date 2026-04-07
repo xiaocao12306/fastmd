@@ -2,6 +2,7 @@ import {
   adjustWidthTier,
   bootstrapShell,
   readHotInteractionSurface,
+  readLinuxFrontmostGateDiagnostic,
   readLinuxHoveredItemDiagnostic,
   readLinuxProbePlans,
   readLinuxRuntimeDiagnostics,
@@ -465,7 +466,15 @@ export class PreviewShellApp {
       for (const key of [
         "linuxDisplayServer",
         "linuxFrontmostGateStatus",
+        "linuxFrontmostGateBackend",
         "linuxFrontmostGateApiStack",
+        "linuxFrontmostGateObservedIdentifier",
+        "linuxFrontmostGateStableSurfaceId",
+        "linuxFrontmostGateWindowTitle",
+        "linuxFrontmostGateProcessId",
+        "linuxFrontmostGateIsOpen",
+        "linuxFrontmostGateRejection",
+        "linuxFrontmostGateDetail",
         "linuxFrontmostGateNote",
         "linuxHoveredItemStatus",
         "linuxHoveredItemApiStack",
@@ -492,9 +501,23 @@ export class PreviewShellApp {
     }
 
     this.setShellData("linuxDisplayServer", diagnostics.displayServer);
-    this.setShellData("linuxFrontmostGateStatus", diagnostics.frontmostGate.status);
-    this.setShellData("linuxFrontmostGateApiStack", diagnostics.frontmostGate.apiStack);
-    this.setShellData("linuxFrontmostGateNote", diagnostics.frontmostGate.note);
+    const frontmostGate = readLinuxFrontmostGateDiagnostic(this.hostCapabilities);
+    if (frontmostGate) {
+      this.setShellData("linuxFrontmostGateStatus", frontmostGate.status);
+      this.setShellData("linuxFrontmostGateBackend", frontmostGate.backend);
+      this.setShellData("linuxFrontmostGateApiStack", frontmostGate.apiStack);
+      this.setShellData(
+        "linuxFrontmostGateObservedIdentifier",
+        frontmostGate.observedIdentifier,
+      );
+      this.setShellData("linuxFrontmostGateStableSurfaceId", frontmostGate.stableSurfaceId);
+      this.setShellData("linuxFrontmostGateWindowTitle", frontmostGate.windowTitle);
+      this.setShellData("linuxFrontmostGateProcessId", frontmostGate.processId);
+      this.setShellData("linuxFrontmostGateIsOpen", frontmostGate.isOpen);
+      this.setShellData("linuxFrontmostGateRejection", frontmostGate.rejection);
+      this.setShellData("linuxFrontmostGateDetail", frontmostGate.detail);
+      this.setShellData("linuxFrontmostGateNote", frontmostGate.note);
+    }
     const hoveredItem = readLinuxHoveredItemDiagnostic(this.hostCapabilities);
     if (hoveredItem) {
       this.setShellData("linuxHoveredItemStatus", hoveredItem.status);

@@ -210,6 +210,72 @@ describe("FastMD shared preview shell", () => {
     expect(document.body.textContent).not.toContain("desktop-space physical pixels");
   });
 
+  it("stores live Ubuntu frontmost-gate diagnostics as hidden shell metadata", async () => {
+    createApp({
+      ...demoBootstrapPayload,
+      hostCapabilities: {
+        ...demoBootstrapPayload.hostCapabilities,
+        platformId: "ubuntu",
+        runtimeMode: "desktop",
+        linuxRuntimeDiagnostics: {
+          displayServer: "wayland",
+          frontmostGate: {
+            status: "emitted",
+            displayServer: "wayland",
+            backend: "live-atspi-wayland",
+            apiStack:
+              "focus=AT-SPI focused accessible + app_bus=AT-SPI application bus name",
+            observedIdentifier: "org.gnome.Nautilus",
+            stableSurfaceId: "atspi:wayland:pid=4201:name=Docs",
+            windowTitle: "Docs",
+            processId: 4201,
+            isOpen: true,
+            rejection: null,
+            detail: "Live Linux frontmost probing kept Nautilus as the foreground gate.",
+            note:
+              "Wayland frontmost-gate diagnostics now run against the live AT-SPI focus probe; Ubuntu validation evidence is still required before parity sign-off.",
+          },
+          hoveredItem: {
+            status: "pending-live-probe",
+            displayServer: "wayland",
+            apiStack: "pointer=AT-SPI Component.GetAccessibleAtPoint(screen)",
+            note: "hover pending",
+          },
+          monitorSelection: {
+            status: "emitted",
+            selectionPolicy: "containing-work-area-then-nearest",
+            note: "monitor emitted",
+          },
+          previewPlacement: {
+            status: "emitted",
+            policy: "4:3-reposition-before-shrink",
+            note: "placement emitted",
+          },
+          editLifecycle: {
+            status: "emitted",
+            policy: "edit-lock-disables-blur-close",
+            editing: false,
+            closeOnBlurEnabled: true,
+            note: "edit emitted",
+            canPersistPreviewEdits: false,
+          },
+        },
+      },
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const shell = document.querySelector(".shell") as HTMLElement | null;
+
+    expect(shell?.dataset.linuxFrontmostGateBackend).toBe("live-atspi-wayland");
+    expect(shell?.dataset.linuxFrontmostGateObservedIdentifier).toBe("org.gnome.Nautilus");
+    expect(shell?.dataset.linuxFrontmostGateStableSurfaceId).toContain("pid=4201");
+    expect(shell?.dataset.linuxFrontmostGateWindowTitle).toBe("Docs");
+    expect(shell?.dataset.linuxFrontmostGateProcessId).toBe("4201");
+    expect(shell?.dataset.linuxFrontmostGateIsOpen).toBe("true");
+    expect(document.body.textContent).not.toContain("live-atspi-wayland");
+    expect(document.body.textContent).not.toContain("org.gnome.Nautilus");
+  });
+
   it("stores hot-surface routing metadata as hidden shell state", async () => {
     createApp({
       ...demoBootstrapPayload,

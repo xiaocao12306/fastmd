@@ -193,7 +193,10 @@ impl fmt::Display for HoveredItemResolutionRejection {
                 "hovered Nautilus item used a non-parity resolution scope: {scope:?}"
             ),
             Self::CandidateRejected { rejection } => {
-                write!(f, "hovered Nautilus item failed markdown acceptance: {rejection}")
+                write!(
+                    f,
+                    "hovered Nautilus item failed markdown acceptance: {rejection}"
+                )
             }
         }
     }
@@ -380,7 +383,10 @@ mod tests {
             unsupported_description: None,
         });
 
-        assert_eq!(snapshot.path_source, HoverCandidateSource::HoveredRowLabelWithParentDirectory);
+        assert_eq!(
+            snapshot.path_source,
+            HoverCandidateSource::HoveredRowLabelWithParentDirectory
+        );
         assert_eq!(snapshot.visible_markdown_peer_count, Some(3));
         assert_eq!(snapshot.item_name.as_deref(), Some("third.md"));
         assert_eq!(
@@ -417,7 +423,10 @@ mod tests {
             &filter,
         );
         assert_eq!(
-            exact_outcome.accepted.as_ref().map(|accepted| accepted.path()),
+            exact_outcome
+                .accepted
+                .as_ref()
+                .map(|accepted| accepted.path()),
             Some(exact.as_path())
         );
 
@@ -428,7 +437,10 @@ mod tests {
                 backend: "fixture".to_string(),
                 absolute_path: None,
                 parent_directory: row.parent().map(Path::to_path_buf),
-                item_name: row.file_name().and_then(|value| value.to_str()).map(ToOwned::to_owned),
+                item_name: row
+                    .file_name()
+                    .and_then(|value| value.to_str())
+                    .map(ToOwned::to_owned),
                 path_source: HoverCandidateSource::HoveredRowLabelWithParentDirectory,
                 visible_markdown_peer_count: Some(4),
                 unsupported_description: None,
@@ -436,7 +448,10 @@ mod tests {
             &filter,
         );
         assert_eq!(
-            row_outcome.accepted.as_ref().map(|accepted| accepted.path()),
+            row_outcome
+                .accepted
+                .as_ref()
+                .map(|accepted| accepted.path()),
             Some(row.as_path())
         );
 
