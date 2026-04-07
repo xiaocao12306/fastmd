@@ -494,7 +494,7 @@ Checklist reset rule:
 - [ ] Encode footnote rendering parity
 - [ ] Encode HTML-block rendering parity
 - [ ] Encode compact top-right hint-chip visual parity
-- [ ] Add snapshot or fixture tests for rendering DTOs and block mappings
+- [x] Add snapshot or fixture tests for rendering DTOs and block mappings
 
 ### Layer 4 — Shared Frontend And Tauri Shell
 

@@ -481,6 +481,7 @@ mod tests {
         preview_feature_gaps_against_reference, EditingPhase, EditingState, MacOsPreviewFeature,
         PreviewFeatureCoverageLane,
     };
+    use serde_json::json;
     use std::collections::BTreeSet;
     use std::fs;
     use std::path::PathBuf;
@@ -606,6 +607,168 @@ mod tests {
         let decoded: PreviewModel = serde_json::from_str(&encoded).expect("deserialize");
         assert_eq!(model, decoded);
         assert!(decoded.diagnostics.diagnostics.is_empty());
+    }
+
+    #[test]
+    fn preview_model_snapshot_locks_stage2_render_dto_shape() {
+        let editing = EditingState {
+            phase: EditingPhase::Active,
+            target_start_line: Some(3),
+            target_end_line: Some(5),
+            draft_markdown: None,
+            draft_source: Some("updated\nblock".to_string()),
+        };
+        let model = preview_model(
+            "spec.md",
+            "# Title\nbody",
+            1,
+            BackgroundMode::White,
+            sample_blocks(),
+            Some(
+                build_inline_editor_model(
+                    sample_markdown(),
+                    &BlockMapping {
+                        block_id: 2,
+                        kind: BlockKind::Paragraph,
+                        start_line: 3,
+                        end_line: 5,
+                    },
+                    &editing,
+                )
+                .expect("inline editor model"),
+            ),
+        );
+
+        assert_eq!(
+            serde_json::to_value(&model).expect("preview model should serialize"),
+            json!({
+                "document": {
+                    "title": "spec.md",
+                    "markdown": "# Title\nbody"
+                },
+                "chrome": {
+                    "toolbar_eyebrow": "FastMD Preview",
+                    "hint_chip": {
+                        "width_label": "← 2/4 →",
+                        "background_label": "Tab",
+                        "paging_label": "(⇧+) Space",
+                        "background_icon": "◐",
+                        "paging_icon": "⇵"
+                    },
+                    "background_mode": "white",
+                    "selected_width_tier_index": 1,
+                    "width_tiers_px": [560, 960, 1440, 1920],
+                    "width_label_tooltip": "2/4 · 960px",
+                    "width_label_aria_label": "宽度档位 2/4，目标宽度 960px",
+                    "theme": {
+                        "page_bg": "#ffffff",
+                        "surface": "#ffffff",
+                        "surface_strong": "#ffffff",
+                        "border": "rgba(21, 33, 55, 0.12)",
+                        "text": "#111111",
+                        "muted": "#5f6b7c",
+                        "accent": "#1f6feb",
+                        "accent_soft": "rgba(31, 111, 235, 0.10)",
+                        "quote": "#d0dae8",
+                        "code_bg": "#f5f7fb",
+                        "editor_bg": "#fffdf8",
+                        "editor_border": "rgba(208, 150, 24, 0.28)"
+                    }
+                },
+                "block_mappings": [
+                    {
+                        "block_id": 0,
+                        "kind": "paragraph",
+                        "start_line": 0,
+                        "end_line": 10
+                    },
+                    {
+                        "block_id": 1,
+                        "kind": "blockquote",
+                        "start_line": 2,
+                        "end_line": 8
+                    },
+                    {
+                        "block_id": 2,
+                        "kind": "paragraph",
+                        "start_line": 3,
+                        "end_line": 5
+                    }
+                ],
+                "inline_editor": {
+                    "block": {
+                        "block_id": 2,
+                        "kind": "paragraph",
+                        "start_line": 3,
+                        "end_line": 5
+                    },
+                    "original_source": "line 4\nline 5",
+                    "editable_source": "updated\nblock",
+                    "source_line_label": "Editing source lines 4-5",
+                    "return_hint": "Double-clicked block returns to raw Markdown.",
+                    "status_text": "Edit mode is locked until you save or cancel.",
+                    "save_label": "Save",
+                    "cancel_label": "Cancel"
+                },
+                "diagnostics": {
+                    "diagnostics": []
+                }
+            })
+        );
+    }
+
+    #[test]
+    fn block_mapping_snapshot_locks_render_mapping_shape_and_selection_helpers() {
+        let blocks = sample_blocks();
+        let editing = EditingState {
+            phase: EditingPhase::Active,
+            target_start_line: Some(3),
+            target_end_line: Some(5),
+            draft_markdown: None,
+            draft_source: None,
+        };
+
+        assert_eq!(
+            serde_json::to_value(&blocks).expect("block mappings should serialize"),
+            json!([
+                {
+                    "block_id": 0,
+                    "kind": "paragraph",
+                    "start_line": 0,
+                    "end_line": 10
+                },
+                {
+                    "block_id": 1,
+                    "kind": "blockquote",
+                    "start_line": 2,
+                    "end_line": 8
+                },
+                {
+                    "block_id": 2,
+                    "kind": "paragraph",
+                    "start_line": 3,
+                    "end_line": 5
+                }
+            ])
+        );
+        assert_eq!(
+            find_block_by_line_range(&blocks, 3, 5)
+                .expect("line-range lookup should resolve the inner paragraph")
+                .block_id,
+            2
+        );
+        assert_eq!(
+            find_block_for_editing_state(&blocks, &editing)
+                .expect("editing-state lookup should resolve the selected block")
+                .block_id,
+            2
+        );
+        assert_eq!(
+            find_smallest_matching_block(&blocks, 4)
+                .expect("smallest matching block should prefer the narrowest span")
+                .block_id,
+            2
+        );
     }
 
     #[test]
