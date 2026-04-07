@@ -1,9 +1,9 @@
 use std::cmp::Ordering;
 
 use fastmd_contracts::{
-    AppEvent, CloseReason, EditingPhase, FrontSurface, HoveredItem, MonitorMetadata, PageInput,
-    PagingMotion, PreviewState, PreviewWindowRequest, ResolvedDocument, ScreenPoint, ScreenRect,
-    MACOS_REFERENCE_BEHAVIOR,
+    AppCommand, AppEvent, CloseReason, EditingPhase, FrontSurface, HoveredItem, MonitorMetadata,
+    PageInput, PagingMotion, PreviewState, PreviewWindowRequest, ResolvedDocument, ScreenPoint,
+    ScreenRect, MACOS_REFERENCE_BEHAVIOR,
 };
 use fastmd_render::{find_smallest_matching_block, BlockMapping};
 
@@ -31,6 +31,49 @@ impl CoreEngine {
 
     pub fn state(&self) -> &PreviewState {
         &self.state
+    }
+
+    pub fn dispatch_command(
+        &mut self,
+        command: AppCommand,
+        blocks: &[BlockMapping],
+    ) -> Vec<AppEvent> {
+        match command {
+            AppCommand::ObserveHover {
+                at_ms,
+                front_surface,
+                hovered_item,
+                monitor,
+            } => self.observe_hover(at_ms, front_surface, hovered_item, monitor),
+            AppCommand::SetInteractionHot { hot } => {
+                self.set_interaction_hot(hot);
+                Vec::new()
+            }
+            AppCommand::AdjustWidthTier { delta, monitor } => {
+                self.adjust_width_tier(delta, monitor)
+            }
+            AppCommand::ToggleBackgroundMode => self.toggle_background_mode(),
+            AppCommand::ScrollPreview {
+                raw_delta_y,
+                precise,
+            } => self.handle_scroll_input(raw_delta_y, precise),
+            AppCommand::PagePreview { input } => self.handle_page_input(input),
+            AppCommand::OutsideClick => self.outside_click(),
+            AppCommand::FrontSurfaceChanged { front_surface } => {
+                self.front_surface_changed(front_surface)
+            }
+            AppCommand::Escape => self.escape_pressed(),
+            AppCommand::RequestEdit { target_line } => self.begin_edit_at_line(target_line, blocks),
+            AppCommand::SaveEdit {
+                replacement_markdown,
+            } => self.save_edit(replacement_markdown),
+            AppCommand::CompleteSave {
+                success,
+                persisted_markdown: _,
+                message: _,
+            } => self.complete_save(success),
+            AppCommand::CancelEdit => self.cancel_edit(),
+        }
     }
 
     pub fn observe_hover(
@@ -471,8 +514,8 @@ pub fn preview_frame_for_anchor(
 mod tests {
     use super::*;
     use fastmd_contracts::{
-        BackgroundMode, DocumentKind, DocumentOrigin, DocumentPath, EditingPhase,
-        FrontSurfaceIdentity, FrontSurfaceKind, PlatformId,
+        AppCommand, BackgroundMode, DocumentKind, DocumentOrigin, DocumentPath, EditingPhase,
+        FrontSurfaceIdentity, FrontSurfaceKind, PageDirection, PlatformId,
     };
     use fastmd_render::BlockKind;
 
@@ -952,6 +995,104 @@ mod tests {
             background_events,
             vec![AppEvent::BackgroundModeChanged {
                 background_mode: BackgroundMode::Black,
+            }]
+        );
+    }
+
+    #[test]
+    fn app_command_dispatch_routes_shared_width_paging_and_close_contracts() {
+        let mut engine = CoreEngine::new();
+
+        let initial_hover = AppCommand::ObserveHover {
+            at_ms: 0,
+            front_surface: finder_surface(true, "finder-window-1"),
+            hovered_item: Some(hovered_markdown("/Users/example/Docs/a.md", 180.0, 780.0)),
+            monitor: Some(monitor()),
+        };
+        let committed_hover = AppCommand::ObserveHover {
+            at_ms: 1_000,
+            front_surface: finder_surface(true, "finder-window-1"),
+            hovered_item: Some(hovered_markdown("/Users/example/Docs/a.md", 180.0, 780.0)),
+            monitor: None,
+        };
+
+        assert!(engine.dispatch_command(initial_hover, &[]).is_empty());
+        let opened = engine.dispatch_command(committed_hover, &[]);
+        assert!(matches!(
+            opened.as_slice(),
+            [AppEvent::PreviewWindowRequested { .. }]
+        ));
+
+        engine.dispatch_command(AppCommand::SetInteractionHot { hot: false }, &[]);
+        assert!(engine
+            .dispatch_command(
+                AppCommand::AdjustWidthTier {
+                    delta: 1,
+                    monitor: None,
+                },
+                &[],
+            )
+            .is_empty());
+
+        engine.dispatch_command(AppCommand::SetInteractionHot { hot: true }, &[]);
+        let width_events = engine.dispatch_command(
+            AppCommand::AdjustWidthTier {
+                delta: 1,
+                monitor: None,
+            },
+            &[],
+        );
+        assert_eq!(
+            width_events[0],
+            AppEvent::WidthTierChanged {
+                selected_width_tier_index: 1,
+                requested_width_px: 960,
+            }
+        );
+        assert!(matches!(
+            width_events[1],
+            AppEvent::PreviewWindowRequested { .. }
+        ));
+
+        assert_eq!(
+            engine.dispatch_command(AppCommand::ToggleBackgroundMode, &[]),
+            vec![AppEvent::BackgroundModeChanged {
+                background_mode: BackgroundMode::Black,
+            }]
+        );
+        assert_eq!(
+            engine.dispatch_command(
+                AppCommand::ScrollPreview {
+                    raw_delta_y: -84.0,
+                    precise: true,
+                },
+                &[],
+            ),
+            vec![AppEvent::ScrollApplied { delta_y: 84.0 }]
+        );
+
+        let paging = engine.dispatch_command(
+            AppCommand::PagePreview {
+                input: PageInput::PageDown,
+            },
+            &[],
+        );
+        match paging.as_slice() {
+            [AppEvent::PageMotionRequested { motion }] => {
+                assert_eq!(motion.direction, PageDirection::Forward);
+                assert_eq!(motion.page_fraction, 0.92);
+                assert_eq!(motion.overshoot_factor, 0.06);
+                assert_eq!(motion.max_overshoot_px, 34.0);
+                assert_eq!(motion.first_segment_ms, 520);
+                assert_eq!(motion.settle_segment_ms, 180);
+            }
+            other => panic!("unexpected paging events: {other:?}"),
+        }
+
+        assert_eq!(
+            engine.dispatch_command(AppCommand::Escape, &[]),
+            vec![AppEvent::PreviewWindowHidden {
+                reason: CloseReason::Escape,
             }]
         );
     }

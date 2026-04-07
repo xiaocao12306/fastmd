@@ -31,14 +31,15 @@ This validation file is crate-local evidence only. It does not claim full Window
 - monitor selection now prefers the containing translated work area and falls back to the nearest work area via shared-core monitor selection helpers
 - `WindowsPreviewLoop` now wires frontmost Explorer gating, exact hovered-item resolution, and translated monitor selection into `fastmd_core::observe_hover`
 - probe-driven preview-loop tests now cover the 1-second hover open debounce, blocked open while a non-Explorer surface is frontmost, stationary same-item no-reopen, replacement only after a different resolved Markdown target, and same-document pointer motion without dismissal
+- `WindowsPreviewLoop::dispatch_command` now routes shared Stage 2 commands into `fastmd_core`, so Windows width-tier changes reuse the same shared macOS-parity semantics instead of a crate-local fork
+- probe-driven preview-loop tests now prove that Windows width-tier changes emit the same 560 / 960 / 1440 / 1920 requests as macOS, preserve 4:3 aspect ratio, reposition before shrinking on roomy work areas, and only shrink once the requested tier truly cannot fit the selected work area
 - unit tests added for hover API-stack metadata, probe-output parsing, exact-vs-fallback evidence classification, adapter wiring, relative-path rejection, and stable-surface classification behavior
 - unit tests added for coordinate API-stack metadata, Windows-to-shared desktop-space translation, containing-monitor selection, and nearest-work-area fallback
 - unit tests added for frontmost-surface preservation when Explorer gating fails, shared-contract Windows surface round-trips, and shared-core Explorer hover-open semantics
 
 ## Still pending
 
-- preview placement parity
-- post-open interaction parity wiring for width tiers, background toggling, paging, editing, outside-click close, and Escape close; the shared edit-lock and close-policy rules are validated in `fastmd-core`, but Explorer/Tauri command wiring is still pending
+- post-open interaction parity wiring for background toggling, paging, editing, outside-click close, and Escape close; the shared edit-lock and close-policy rules are validated in `fastmd-core`, but Windows-specific end-to-end wiring and validation evidence are still pending
 - runtime diagnostics parity
 - validation evidence on a real Windows 11 machine for frontmost gating, exact hovered-item resolution, and multi-monitor coordinate handling
 

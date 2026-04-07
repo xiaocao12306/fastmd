@@ -1,10 +1,11 @@
 use std::fmt;
 
 use fastmd_contracts::{
-    AppEvent, DocumentKind, DocumentOrigin, HoverResolutionScope, HoveredItem, PreviewState,
-    ResolvedDocument, ScreenPoint,
+    AppCommand, AppEvent, DocumentKind, DocumentOrigin, HoverResolutionScope, HoveredItem,
+    PreviewState, ResolvedDocument, ScreenPoint,
 };
 use fastmd_core::CoreEngine;
+use fastmd_render::BlockMapping;
 
 use crate::{
     AcceptedMarkdownPath, AdapterError, CoordinateProbeError, ExplorerAdapter, FrontmostProbeError,
@@ -54,6 +55,14 @@ impl WindowsPreviewLoop {
 
     pub fn state(&self) -> &PreviewState {
         self.engine.state()
+    }
+
+    pub fn dispatch_command(
+        &mut self,
+        command: AppCommand,
+        blocks: &[BlockMapping],
+    ) -> Vec<AppEvent> {
+        self.engine.dispatch_command(command, blocks)
     }
 
     /// Polls the live Windows host and forwards the resulting Explorer facts
@@ -138,11 +147,14 @@ impl WindowsPreviewLoop {
             .as_ref()
             .map(|accepted| hovered_item_from_probe(accepted, &hover, &translation));
 
-        self.engine.observe_hover(
-            at_ms,
-            frontmost.observed_surface,
-            hovered_item,
-            Some(translation.selected_monitor),
+        self.dispatch_command(
+            AppCommand::ObserveHover {
+                at_ms,
+                front_surface: frontmost.observed_surface,
+                hovered_item,
+                monitor: Some(translation.selected_monitor),
+            },
+            &[],
         )
     }
 }
@@ -206,7 +218,7 @@ mod tests {
     use std::path::{Path, PathBuf};
     use std::time::{SystemTime, UNIX_EPOCH};
 
-    use fastmd_contracts::{AppEvent, CloseReason};
+    use fastmd_contracts::{AppCommand, AppEvent, CloseReason};
     use serde_json::json;
 
     use super::WindowsPreviewLoop;
@@ -308,6 +320,47 @@ mod tests {
                         "y": 0.0,
                         "width": 1920.0,
                         "height": 1040.0
+                    }
+                }
+            ]
+        })
+        .to_string()
+    }
+
+    fn coordinate_json_for_visible_frame(
+        cursor_x: f64,
+        shared_cursor_y: f64,
+        width: f64,
+        height: f64,
+    ) -> String {
+        json!({
+            "cursor": {
+                "x": cursor_x,
+                "y": height - shared_cursor_y
+            },
+            "virtual_desktop": {
+                "x": 0.0,
+                "y": 0.0,
+                "width": width,
+                "height": height
+            },
+            "monitors": [
+                {
+                    "id": "primary",
+                    "name": "Primary",
+                    "is_primary": true,
+                    "scale_factor": 1.0,
+                    "frame": {
+                        "x": 0.0,
+                        "y": 0.0,
+                        "width": width,
+                        "height": height
+                    },
+                    "working_area": {
+                        "x": 0.0,
+                        "y": 0.0,
+                        "width": width,
+                        "height": height
                     }
                 }
             ]
@@ -542,5 +595,113 @@ mod tests {
             }]
         );
         assert!(!preview.state().visibility.visible);
+    }
+
+    #[test]
+    fn width_tier_command_uses_the_same_windows_width_model_and_repositions_before_shrinking() {
+        let fixture = TempFixture::new();
+        let path = fixture.write_file("notes.md", "# hello");
+        let mut preview = WindowsPreviewLoop::new();
+
+        preview
+            .observe_probe_outputs(
+                0,
+                &explorer_frontmost_json(),
+                Some(&hovered_item_json(&path, "exact-item-under-pointer")),
+                Some(&coordinate_json_for_visible_frame(
+                    2_150.0, 600.0, 2_200.0, 1_200.0,
+                )),
+            )
+            .expect("probe outputs should classify");
+        preview
+            .observe_probe_outputs(
+                1_000,
+                &explorer_frontmost_json(),
+                Some(&hovered_item_json(&path, "exact-item-under-pointer")),
+                Some(&coordinate_json_for_visible_frame(
+                    2_150.0, 600.0, 2_200.0, 1_200.0,
+                )),
+            )
+            .expect("probe outputs should classify");
+
+        let events = preview.dispatch_command(
+            AppCommand::AdjustWidthTier {
+                delta: 1,
+                monitor: None,
+            },
+            &[],
+        );
+
+        assert_eq!(
+            events[0],
+            AppEvent::WidthTierChanged {
+                selected_width_tier_index: 1,
+                requested_width_px: 960,
+            }
+        );
+        match &events[1] {
+            AppEvent::PreviewWindowRequested { request } => {
+                assert_eq!(request.selected_width_tier_index, 1);
+                assert_eq!(request.requested_width_px, 960);
+                assert_eq!(request.frame.width, 960.0);
+                assert_eq!(request.frame.height, 720.0);
+                assert!(request.frame.x < 2_150.0);
+            }
+            other => panic!("unexpected event: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn width_tier_command_only_shrinks_when_the_requested_four_by_three_size_cannot_fit() {
+        let fixture = TempFixture::new();
+        let path = fixture.write_file("notes.md", "# hello");
+        let mut preview = WindowsPreviewLoop::new();
+
+        preview
+            .observe_probe_outputs(
+                0,
+                &explorer_frontmost_json(),
+                Some(&hovered_item_json(&path, "exact-item-under-pointer")),
+                Some(&coordinate_json_for_visible_frame(
+                    500.0, 400.0, 1_000.0, 800.0,
+                )),
+            )
+            .expect("probe outputs should classify");
+        preview
+            .observe_probe_outputs(
+                1_000,
+                &explorer_frontmost_json(),
+                Some(&hovered_item_json(&path, "exact-item-under-pointer")),
+                Some(&coordinate_json_for_visible_frame(
+                    500.0, 400.0, 1_000.0, 800.0,
+                )),
+            )
+            .expect("probe outputs should classify");
+
+        let events = preview.dispatch_command(
+            AppCommand::AdjustWidthTier {
+                delta: 3,
+                monitor: None,
+            },
+            &[],
+        );
+
+        assert_eq!(
+            events[0],
+            AppEvent::WidthTierChanged {
+                selected_width_tier_index: 3,
+                requested_width_px: 1_920,
+            }
+        );
+        match &events[1] {
+            AppEvent::PreviewWindowRequested { request } => {
+                assert_eq!(request.selected_width_tier_index, 3);
+                assert_eq!(request.requested_width_px, 1_920);
+                assert_eq!(request.frame.width, 976.0);
+                assert_eq!(request.frame.height, 732.0);
+                assert!((request.frame.width / request.frame.height - (4.0 / 3.0)).abs() < 0.0001);
+            }
+            other => panic!("unexpected event: {other:?}"),
+        }
     }
 }

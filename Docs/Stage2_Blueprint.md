@@ -564,12 +564,12 @@ Checklist reset rule:
 - [x] Implement preview replacement on a different hovered `.md` with the same semantics as macOS
 - [x] Ensure replacement happens only when the resolved document actually changes
 - [x] Ensure ordinary pointer motion does not dismiss the preview if the hovered Markdown target did not change
-- [ ] Implement the same four width tiers as macOS
-- [ ] Bind Windows preview sizing to the same 560 / 960 / 1440 / 1920 tier model as macOS
-- [ ] Implement the same 4:3 placement and “reposition before shrink” policy as macOS
-- [ ] Apply the same edge inset and pointer offset rules as macOS
-- [ ] Preserve requested tier size by repositioning before any size reduction
-- [ ] Reduce size only when the requested 4:3 tier truly cannot fit the current monitor work area
+- [x] Implement the same four width tiers as macOS
+- [x] Bind Windows preview sizing to the same 560 / 960 / 1440 / 1920 tier model as macOS
+- [x] Implement the same 4:3 placement and “reposition before shrink” policy as macOS
+- [x] Apply the same edge inset and pointer offset rules as macOS
+- [x] Preserve requested tier size by repositioning before any size reduction
+- [x] Reduce size only when the requested 4:3 tier truly cannot fit the current monitor work area
 - [ ] Implement the same compact hint-chip behavior as macOS
 - [ ] Keep the Windows preview chrome free of Windows-only helper text that would diverge from macOS
 - [ ] Implement the same hot interaction-surface behavior as macOS

@@ -22,7 +22,7 @@ pub struct AdapterValidationManifest {
     pub features: &'static [AdapterValidationFeature],
 }
 
-pub static WINDOWS_VALIDATION_FEATURES: [AdapterValidationFeature; 14] = [
+pub static WINDOWS_VALIDATION_FEATURES: [AdapterValidationFeature; 15] = [
     AdapterValidationFeature {
         blueprint_item: "Restrict Windows support target to Windows 11 plus Explorer only",
         status: FeatureStatus::ImplementedInThisCrate,
@@ -84,14 +84,19 @@ pub static WINDOWS_VALIDATION_FEATURES: [AdapterValidationFeature; 14] = [
         evidence: "WindowsPreviewLoop preserves the current frontmost Explorer surface even when the gate closes, then proves through probe-driven tests that non-Explorer foreground windows block preview open, stationary same-item hovers do not reopen, different Markdown documents replace after a fresh debounce, and same-document pointer motion does not dismiss the preview.",
     },
     AdapterValidationFeature {
+        blueprint_item: "Implement the same four width tiers, requested-width binding, and 4:3 reposition-before-shrink placement policy as macOS",
+        status: FeatureStatus::ImplementedInThisCrate,
+        evidence: "WindowsPreviewLoop now dispatches shared AppCommand::AdjustWidthTier into fastmd_core, and probe-driven tests prove that 560/960/1440/1920 tier requests preserve 4:3 placement, reposition before shrinking on roomy work areas, and shrink only when the requested tier cannot fit the selected Windows work area.",
+    },
+    AdapterValidationFeature {
+        blueprint_item: "Implement background toggle, paging, editing, outside-click close, Escape close, and runtime shell parity through shared contracts/core",
+        status: FeatureStatus::PendingAdapterWork,
+        evidence: "Shared contracts/core already encode these macOS semantics, but the Windows lane still needs crate-local end-to-end wiring and Windows-specific validation evidence for the remaining post-open interaction paths.",
+    },
+    AdapterValidationFeature {
         blueprint_item: "Implement the same runtime diagnostics coverage as macOS where host APIs permit",
         status: FeatureStatus::PendingAdapterWork,
         evidence: "Diagnostics seam exists but host-backed emission is not implemented.",
-    },
-    AdapterValidationFeature {
-        blueprint_item: "Implement width tiers, background toggle, paging, editing, outside-click close, Escape close, and runtime shell parity through shared contracts/core",
-        status: FeatureStatus::PendingAdapterWork,
-        evidence: "Shared contracts/core now encode the macOS interaction semantics, shared render references still lock the current macOS preview chrome, and the Windows hover-open lifecycle is wired; post-open interaction commands plus the actual shell window host still need end-to-end Windows parity wiring.",
     },
 ];
 
@@ -125,7 +130,7 @@ mod tests {
             .filter(|feature| feature.status == FeatureStatus::ImplementedInThisCrate)
             .count();
 
-        assert_eq!(implemented, 12);
+        assert_eq!(implemented, 13);
         assert!(
             manifest
                 .features

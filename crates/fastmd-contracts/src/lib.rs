@@ -1409,8 +1409,19 @@ mod tests {
             hovered_item: Some(sample_hovered_item()),
             monitor: Some(sample_monitor()),
         };
+        let width_command = AppCommand::AdjustWidthTier {
+            delta: 1,
+            monitor: Some(sample_monitor()),
+        };
         let event = AppEvent::PreviewWindowRequested {
             request: sample_preview_request(),
+        };
+        let width_event = AppEvent::WidthTierChanged {
+            selected_width_tier_index: 1,
+            requested_width_px: 960,
+        };
+        let close_event = AppEvent::PreviewWindowHidden {
+            reason: CloseReason::Escape,
         };
         let error = HostError::new(
             HostErrorCode::HoverResolutionFailed,
@@ -1445,7 +1456,10 @@ mod tests {
         assert_roundtrip(&sample_preview_request());
         assert_roundtrip(&preview_state);
         assert_roundtrip(&command);
+        assert_roundtrip(&width_command);
         assert_roundtrip(&event);
+        assert_roundtrip(&width_event);
+        assert_roundtrip(&close_event);
         assert_roundtrip(&error);
     }
 
