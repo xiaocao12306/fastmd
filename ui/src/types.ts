@@ -56,6 +56,7 @@ export interface HostCapabilities {
   sharedRenderingSurface?: SharedRenderingSurface | null;
   linuxProbePlans?: LinuxProbePlans | null;
   linuxPreviewPlacement?: LinuxPreviewPlacement | null;
+  linuxParityCoverage?: LinuxParityCoverage | null;
   linuxRuntimeDiagnostics?: LinuxRuntimeDiagnostics | null;
 }
 
@@ -88,6 +89,21 @@ export interface LinuxPreviewPlacement {
   aspectRatio: string;
   edgeInsetPx: number;
   pointerOffsetPx: number;
+}
+
+export interface LinuxParityCoverageFeature {
+  feature: string;
+  lanes: string[];
+}
+
+export interface LinuxParityCoverage {
+  target: string;
+  referenceSurface: string;
+  matchesReference: boolean;
+  coveredFeatureCount: number;
+  referenceFeatureCount: number;
+  missingFeatures: string[];
+  featureLanes: LinuxParityCoverageFeature[];
 }
 
 export interface PreviewGeometryRect {

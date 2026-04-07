@@ -34,12 +34,14 @@ Implemented and unit-tested in this slice:
 - multi-monitor handling chooses the containing work area first and falls back to the nearest monitor only when the pointer is outside every work area
 - Wayland and X11 backend plans share one semantic guardrail so backend differences do not alter FastMD product behavior
 - the shared Tauri shell now exports that one semantic guardrail into hidden Linux probe-plan metadata, and shared UI tests confirm that switching the display-server plan from Wayland to X11 does not change the user-visible preview shell
+- shared contracts, shared core, shared render, and the Ubuntu adapter now publish one explicit macOS-reference feature-coverage summary, and the shared Tauri/UI lane surfaces that summary as hidden parity metadata instead of relying on an implicit parity claim
 
 Not yet proven in this slice:
 
 - live Ubuntu 24.04 GNOME Files probing on a real Wayland session
 - live Ubuntu 24.04 GNOME Files probing on a real X11 session
 - end-to-end parity with macOS preview opening, paging, rendering, editing, and close behavior
+- reviewed Ubuntu-specific real-machine evidence proving one-to-one parity with macOS across the remaining Layer 7 checklist
 - Rust-side validation on this worker host, because the local macOS Rosetta/linker path aborts before `cargo test` can complete
 
 Shared shell parity now covered outside this crate:

@@ -1,3 +1,16 @@
+use std::collections::{BTreeMap, BTreeSet};
+
+use fastmd_contracts::{
+    macos_preview_feature_list, merged_preview_feature_coverage,
+    preview_feature_coverage_matches_reference, preview_feature_gaps_against_reference,
+    MacOsPreviewFeature,
+};
+use fastmd_core::shared_core_preview_feature_coverage;
+use fastmd_render::shared_render_preview_feature_coverage;
+use serde::{Deserialize, Serialize};
+
+use crate::target::{supported_surface_label, MACOS_REFERENCE_ROOT};
+
 /// Validation status for this crate slice.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ValidationStatus {
@@ -18,6 +31,59 @@ pub struct ValidationNote {
     pub status: ValidationStatus,
     /// Short explanation for the status.
     pub note: &'static str,
+}
+
+/// Coverage lane used by the Ubuntu parity manifest.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum UbuntuPreviewFeatureCoverageLane {
+    SharedCore,
+    SharedRender,
+    UbuntuAdapter,
+}
+
+impl UbuntuPreviewFeatureCoverageLane {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::SharedCore => "shared-core",
+            Self::SharedRender => "shared-render",
+            Self::UbuntuAdapter => "ubuntu-adapter",
+        }
+    }
+}
+
+/// One feature-to-lane mapping in the Ubuntu parity manifest.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub struct UbuntuPreviewFeatureCoverageRecord {
+    pub feature: MacOsPreviewFeature,
+    pub lane: UbuntuPreviewFeatureCoverageLane,
+}
+
+impl UbuntuPreviewFeatureCoverageRecord {
+    pub const fn new(feature: MacOsPreviewFeature, lane: UbuntuPreviewFeatureCoverageLane) -> Self {
+        Self { feature, lane }
+    }
+}
+
+/// One reference feature plus the lanes that currently cover it for Ubuntu.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UbuntuPreviewFeatureCoverageEntry {
+    pub feature: String,
+    pub lanes: Vec<String>,
+}
+
+/// Explicit Ubuntu-to-macOS feature-list comparison surfaced through the shell lane.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UbuntuPreviewFeatureCoverageSummary {
+    pub target: &'static str,
+    pub reference_surface: &'static str,
+    pub matches_reference: bool,
+    pub covered_feature_count: usize,
+    pub reference_feature_count: usize,
+    pub missing_features: Vec<String>,
+    pub feature_lanes: Vec<UbuntuPreviewFeatureCoverageEntry>,
 }
 
 /// Returns the validation notes for this bounded worker slice.
@@ -228,5 +294,199 @@ pub fn crate_slice_validation_notes() -> Vec<ValidationNote> {
             status: ValidationStatus::ImplementedInSlice,
             note: "X11 now runs the same live AT-SPI hovered-item hit-test probe and reuses the identical markdown-filter and diagnostics path, so the backend difference stays in host data gathering only.",
         },
+        ValidationNote {
+            item: "Add validation coverage that explicitly compares Ubuntu behavior against the macOS reference feature list",
+            status: ValidationStatus::ImplementedInSlice,
+            note: "The Ubuntu lane now publishes one explicit feature-coverage summary that merges shared-core, shared-render, and Ubuntu-adapter coverage against fastmd_contracts::macos_preview_feature_list() without claiming the still-open real Wayland/X11 machine evidence items.",
+        },
     ]
+}
+
+pub fn ubuntu_adapter_preview_feature_coverage() -> &'static [MacOsPreviewFeature] {
+    &[
+        MacOsPreviewFeature::FrontmostFileManagerGating,
+        MacOsPreviewFeature::ExactHoveredMarkdownResolution,
+        MacOsPreviewFeature::AcceptedLocalMarkdownFilesOnly,
+        MacOsPreviewFeature::MonitorSelectionAndCoordinateTranslation,
+        MacOsPreviewFeature::RuntimeDiagnosticsCoverage,
+    ]
+}
+
+pub fn ubuntu_adapter_preview_feature_coverage_records(
+) -> &'static [UbuntuPreviewFeatureCoverageRecord] {
+    &[
+        UbuntuPreviewFeatureCoverageRecord::new(
+            MacOsPreviewFeature::FrontmostFileManagerGating,
+            UbuntuPreviewFeatureCoverageLane::UbuntuAdapter,
+        ),
+        UbuntuPreviewFeatureCoverageRecord::new(
+            MacOsPreviewFeature::ExactHoveredMarkdownResolution,
+            UbuntuPreviewFeatureCoverageLane::UbuntuAdapter,
+        ),
+        UbuntuPreviewFeatureCoverageRecord::new(
+            MacOsPreviewFeature::AcceptedLocalMarkdownFilesOnly,
+            UbuntuPreviewFeatureCoverageLane::UbuntuAdapter,
+        ),
+        UbuntuPreviewFeatureCoverageRecord::new(
+            MacOsPreviewFeature::MonitorSelectionAndCoordinateTranslation,
+            UbuntuPreviewFeatureCoverageLane::UbuntuAdapter,
+        ),
+        UbuntuPreviewFeatureCoverageRecord::new(
+            MacOsPreviewFeature::RuntimeDiagnosticsCoverage,
+            UbuntuPreviewFeatureCoverageLane::UbuntuAdapter,
+        ),
+    ]
+}
+
+pub fn ubuntu_preview_feature_coverage() -> Vec<MacOsPreviewFeature> {
+    merged_preview_feature_coverage(&[
+        shared_core_preview_feature_coverage(),
+        shared_render_preview_feature_coverage(),
+        ubuntu_adapter_preview_feature_coverage(),
+    ])
+}
+
+pub fn ubuntu_preview_feature_coverage_records() -> Vec<UbuntuPreviewFeatureCoverageRecord> {
+    let mut records = BTreeSet::new();
+
+    for feature in shared_core_preview_feature_coverage() {
+        records.insert(UbuntuPreviewFeatureCoverageRecord::new(
+            *feature,
+            UbuntuPreviewFeatureCoverageLane::SharedCore,
+        ));
+    }
+    for feature in shared_render_preview_feature_coverage() {
+        records.insert(UbuntuPreviewFeatureCoverageRecord::new(
+            *feature,
+            UbuntuPreviewFeatureCoverageLane::SharedRender,
+        ));
+    }
+    records.extend(
+        ubuntu_adapter_preview_feature_coverage_records()
+            .iter()
+            .copied(),
+    );
+
+    records.into_iter().collect()
+}
+
+pub fn ubuntu_preview_feature_coverage_summary() -> UbuntuPreviewFeatureCoverageSummary {
+    let covered_features = ubuntu_preview_feature_coverage();
+    let records = ubuntu_preview_feature_coverage_records();
+    let missing_features = preview_feature_gaps_against_reference(&[covered_features.as_slice()]);
+    let matches_reference =
+        preview_feature_coverage_matches_reference(&[covered_features.as_slice()]);
+    let mut lanes_by_feature: BTreeMap<
+        MacOsPreviewFeature,
+        BTreeSet<UbuntuPreviewFeatureCoverageLane>,
+    > = BTreeMap::new();
+
+    for record in records {
+        lanes_by_feature
+            .entry(record.feature)
+            .or_default()
+            .insert(record.lane);
+    }
+
+    let feature_lanes = macos_preview_feature_list()
+        .iter()
+        .filter_map(|feature| {
+            lanes_by_feature
+                .get(feature)
+                .map(|lanes| UbuntuPreviewFeatureCoverageEntry {
+                    feature: feature.blueprint_label().to_owned(),
+                    lanes: lanes.iter().map(|lane| lane.label().to_owned()).collect(),
+                })
+        })
+        .collect();
+
+    UbuntuPreviewFeatureCoverageSummary {
+        target: supported_surface_label(),
+        reference_surface: MACOS_REFERENCE_ROOT,
+        matches_reference,
+        covered_feature_count: covered_features.len(),
+        reference_feature_count: macos_preview_feature_list().len(),
+        missing_features: missing_features
+            .into_iter()
+            .map(|feature| feature.blueprint_label().to_owned())
+            .collect(),
+        feature_lanes,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::BTreeSet;
+
+    use super::{
+        crate_slice_validation_notes, ubuntu_preview_feature_coverage,
+        ubuntu_preview_feature_coverage_records, ubuntu_preview_feature_coverage_summary,
+        UbuntuPreviewFeatureCoverageLane, ValidationStatus,
+    };
+    use fastmd_contracts::{macos_preview_feature_list, MacOsPreviewFeature};
+
+    #[test]
+    fn ubuntu_preview_feature_coverage_matches_the_macos_reference_feature_list() {
+        let expected: BTreeSet<_> = macos_preview_feature_list().iter().copied().collect();
+        let actual: BTreeSet<_> = ubuntu_preview_feature_coverage().into_iter().collect();
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn ubuntu_preview_feature_coverage_records_keep_shared_and_adapter_lanes_visible() {
+        let records = ubuntu_preview_feature_coverage_records();
+        let recorded_features: BTreeSet<_> = records.iter().map(|record| record.feature).collect();
+        let plain_features: BTreeSet<_> = ubuntu_preview_feature_coverage().into_iter().collect();
+
+        assert_eq!(recorded_features, plain_features);
+        assert!(records.iter().any(|record| {
+            record.feature == MacOsPreviewFeature::HoverOpensAfterOneSecond
+                && record.lane == UbuntuPreviewFeatureCoverageLane::SharedCore
+        }));
+        assert!(records.iter().any(|record| {
+            record.feature == MacOsPreviewFeature::MarkdownRenderingSurface
+                && record.lane == UbuntuPreviewFeatureCoverageLane::SharedRender
+        }));
+        assert!(records.iter().any(|record| {
+            record.feature == MacOsPreviewFeature::ExactHoveredMarkdownResolution
+                && record.lane == UbuntuPreviewFeatureCoverageLane::UbuntuAdapter
+        }));
+    }
+
+    #[test]
+    fn ubuntu_preview_feature_coverage_summary_surfaces_full_reference_comparison() {
+        let summary = ubuntu_preview_feature_coverage_summary();
+
+        assert_eq!(summary.target, "Ubuntu 24.04 + GNOME Files / Nautilus");
+        assert_eq!(summary.reference_surface, "apps/macos");
+        assert!(summary.matches_reference);
+        assert_eq!(
+            summary.covered_feature_count,
+            macos_preview_feature_list().len()
+        );
+        assert_eq!(
+            summary.reference_feature_count,
+            macos_preview_feature_list().len()
+        );
+        assert!(summary.missing_features.is_empty());
+        assert!(summary.feature_lanes.iter().any(|entry| {
+            entry.feature == MacOsPreviewFeature::FrontmostFileManagerGating.blueprint_label()
+                && entry.lanes.iter().any(|lane| lane == "shared-core")
+                && entry.lanes.iter().any(|lane| lane == "ubuntu-adapter")
+        }));
+        assert!(summary.feature_lanes.iter().any(|entry| {
+            entry.feature == MacOsPreviewFeature::MarkdownRenderingSurface.blueprint_label()
+                && entry.lanes.iter().any(|lane| lane == "shared-render")
+        }));
+    }
+
+    #[test]
+    fn crate_slice_validation_notes_include_the_ubuntu_reference_feature_coverage_item() {
+        assert!(crate_slice_validation_notes().iter().any(|note| {
+            note.item
+                == "Add validation coverage that explicitly compares Ubuntu behavior against the macOS reference feature list"
+                && note.status == ValidationStatus::ImplementedInSlice
+        }));
+    }
 }

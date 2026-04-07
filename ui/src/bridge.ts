@@ -8,6 +8,7 @@ import type {
   HostCapabilities,
   HotInteractionSurface,
   LinuxEditLifecycleDiagnostic,
+  LinuxParityCoverage,
   LinuxProbePlans,
   LinuxRuntimeDiagnostics,
   PreviewGeometry,
@@ -145,6 +146,12 @@ export function readLinuxRuntimeDiagnostics(
   capabilities: HostCapabilities,
 ): LinuxRuntimeDiagnostics | null {
   return capabilities.linuxRuntimeDiagnostics ?? null;
+}
+
+export function readLinuxParityCoverage(
+  capabilities: HostCapabilities,
+): LinuxParityCoverage | null {
+  return capabilities.linuxParityCoverage ?? null;
 }
 
 export function readLinuxFrontmostGateDiagnostic(

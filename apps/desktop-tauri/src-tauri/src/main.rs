@@ -9,10 +9,11 @@ use std::{
 use fastmd_platform_linux_nautilus::{
     api_stack_for_display_server, classify_live_frontmost_gate, classify_live_hovered_item,
     display_server_label, frontmost_gate_pending_note, hovered_item_api_stack_for_display_server,
-    hovered_item_pending_note, DisplayServerKind, FrontmostAppSnapshot, FrontmostSurfaceRejection,
-    HoverCandidate, HoverResolutionScope, HoveredEntityKind, HoveredItemSnapshot,
-    Monitor as PlatformMonitor, MonitorLayout as PlatformMonitorLayout,
-    ScreenPoint as PlatformScreenPoint, ScreenRect as PlatformScreenRect,
+    hovered_item_pending_note, ubuntu_preview_feature_coverage_summary, DisplayServerKind,
+    FrontmostAppSnapshot, FrontmostSurfaceRejection, HoverCandidate, HoverResolutionScope,
+    HoveredEntityKind, HoveredItemSnapshot, Monitor as PlatformMonitor,
+    MonitorLayout as PlatformMonitorLayout, ScreenPoint as PlatformScreenPoint,
+    ScreenRect as PlatformScreenRect, UbuntuPreviewFeatureCoverageSummary,
     DIAGNOSTIC_STATUS_EMITTED, DIAGNOSTIC_STATUS_PENDING_LIVE_PROBE, EDIT_LIFECYCLE_POLICY,
     EDIT_LIFECYCLE_RUNTIME_NOTE, MONITOR_SELECTION_POLICY, MONITOR_SELECTION_RUNTIME_NOTE,
     PREVIEW_PLACEMENT_POLICY, PREVIEW_PLACEMENT_RUNTIME_NOTE,
@@ -89,6 +90,7 @@ struct HostCapabilitiesPayload {
     shared_rendering_surface: Option<SharedRenderingSurfacePayload>,
     linux_probe_plans: Option<LinuxProbePlansPayload>,
     linux_preview_placement: Option<LinuxPreviewPlacementPayload>,
+    linux_parity_coverage: Option<UbuntuPreviewFeatureCoverageSummary>,
     linux_runtime_diagnostics: Option<LinuxRuntimeDiagnosticsPayload>,
 }
 
@@ -396,6 +398,7 @@ fn initial_host_capabilities(shell_state: &ShellStatePayload) -> HostCapabilitie
         shared_rendering_surface: shared_rendering_surface_payload(),
         linux_probe_plans: linux_probe_plans_payload(),
         linux_preview_placement: linux_preview_placement_payload(),
+        linux_parity_coverage: linux_parity_coverage_payload(),
         linux_runtime_diagnostics: linux_runtime_diagnostics_payload(),
     };
     refresh_edit_persistence_capability(&mut host_capabilities, shell_state);
@@ -513,6 +516,14 @@ fn linux_preview_placement_payload() -> Option<LinuxPreviewPlacementPayload> {
         edge_inset_px: PREVIEW_EDGE_INSET as u32,
         pointer_offset_px: PREVIEW_POINTER_OFFSET as u32,
     })
+}
+
+fn linux_parity_coverage_payload() -> Option<UbuntuPreviewFeatureCoverageSummary> {
+    if !cfg!(target_os = "linux") {
+        return None;
+    }
+
+    Some(ubuntu_preview_feature_coverage_summary())
 }
 
 fn detected_linux_display_server() -> Option<DisplayServerKind> {
@@ -2103,6 +2114,19 @@ mod tests {
     }
 
     #[test]
+    fn linux_parity_coverage_is_only_advertised_on_linux_targets() {
+        let shell_state = ShellBridgeState::new();
+
+        assert_eq!(
+            shell_state
+                .snapshot_host_capabilities()
+                .linux_parity_coverage
+                .is_some(),
+            cfg!(target_os = "linux")
+        );
+    }
+
+    #[test]
     fn linux_runtime_diagnostics_are_only_advertised_on_linux_targets() {
         let shell_state = ShellBridgeState::new();
 
@@ -2113,6 +2137,35 @@ mod tests {
                 .is_some(),
             cfg!(target_os = "linux")
         );
+    }
+
+    #[test]
+    fn linux_parity_coverage_payload_tracks_the_macos_reference_feature_list() {
+        let payload = linux_parity_coverage_payload();
+
+        if cfg!(target_os = "linux") {
+            let payload = payload.expect("linux parity coverage should exist on Linux targets");
+            assert!(payload.matches_reference);
+            assert_eq!(payload.target, "Ubuntu 24.04 + GNOME Files / Nautilus");
+            assert_eq!(payload.reference_surface, "apps/macos");
+            assert_eq!(
+                payload.covered_feature_count,
+                payload.reference_feature_count
+            );
+            assert!(payload.missing_features.is_empty());
+            assert!(payload.feature_lanes.iter().any(|entry| {
+                entry.feature
+                    == "Resolve the actual hovered Markdown item instead of a nearby or first-visible candidate"
+                    && entry.lanes.iter().any(|lane| lane == "ubuntu-adapter")
+            }));
+            assert!(payload.feature_lanes.iter().any(|entry| {
+                entry.feature
+                    == "Preserve the macOS Markdown rendering surface, layout, and compact chrome copy"
+                    && entry.lanes.iter().any(|lane| lane == "shared-render")
+            }));
+        } else {
+            assert!(payload.is_none());
+        }
     }
 
     #[test]

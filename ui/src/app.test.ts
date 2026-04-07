@@ -312,6 +312,67 @@ describe("FastMD shared preview shell", () => {
     expect(document.body.textContent).not.toContain("desktop-space physical pixels");
   });
 
+  it("stores Ubuntu macOS-reference parity coverage as hidden shell metadata", async () => {
+    createApp({
+      ...demoBootstrapPayload,
+      hostCapabilities: {
+        ...demoBootstrapPayload.hostCapabilities,
+        platformId: "ubuntu",
+        runtimeMode: "desktop",
+        linuxParityCoverage: {
+          target: "Ubuntu 24.04 + GNOME Files / Nautilus",
+          referenceSurface: "apps/macos",
+          matchesReference: true,
+          coveredFeatureCount: 20,
+          referenceFeatureCount: 20,
+          missingFeatures: [],
+          featureLanes: [
+            {
+              feature:
+                "Ensure preview opening is blocked while the foreground surface is not Finder / Explorer / Nautilus",
+              lanes: ["shared-core", "ubuntu-adapter"],
+            },
+            {
+              feature:
+                "Preserve the macOS Markdown rendering surface, layout, and compact chrome copy",
+              lanes: ["shared-render"],
+            },
+          ],
+        },
+      },
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const shell = document.querySelector(".shell") as HTMLElement | null;
+    const featureLanes = JSON.parse(shell?.dataset.linuxParityCoverageFeatureLanes ?? "[]") as Array<{
+      feature: string;
+      lanes: string[];
+    }>;
+
+    expect(shell?.dataset.linuxParityCoverageTarget).toBe(
+      "Ubuntu 24.04 + GNOME Files / Nautilus",
+    );
+    expect(shell?.dataset.linuxParityCoverageReferenceSurface).toBe("apps/macos");
+    expect(shell?.dataset.linuxParityCoverageMatchesReference).toBe("true");
+    expect(shell?.dataset.linuxParityCoverageCoveredFeatureCount).toBe("20");
+    expect(shell?.dataset.linuxParityCoverageReferenceFeatureCount).toBe("20");
+    expect(shell?.dataset.linuxParityCoverageMissingFeatures).toBe("[]");
+    expect(featureLanes).toEqual([
+      {
+        feature:
+          "Ensure preview opening is blocked while the foreground surface is not Finder / Explorer / Nautilus",
+        lanes: ["shared-core", "ubuntu-adapter"],
+      },
+      {
+        feature:
+          "Preserve the macOS Markdown rendering surface, layout, and compact chrome copy",
+        lanes: ["shared-render"],
+      },
+    ]);
+    expect(document.body.textContent).not.toContain("ubuntu-adapter");
+    expect(document.body.textContent).not.toContain("apps/macos");
+  });
+
   it("stores live Ubuntu frontmost-gate diagnostics as hidden shell metadata", async () => {
     createApp({
       ...demoBootstrapPayload,

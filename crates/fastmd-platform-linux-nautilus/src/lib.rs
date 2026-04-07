@@ -57,4 +57,11 @@ pub use target::{
     supported_surface_label, DisplayServerKind, SessionContext, MACOS_REFERENCE_ROOT,
     TARGET_DESKTOP, TARGET_DISTRO_NAME, TARGET_DISTRO_VERSION_PREFIX, TARGET_FILE_MANAGER,
 };
-pub use validation::{crate_slice_validation_notes, ValidationNote, ValidationStatus};
+pub use validation::{
+    crate_slice_validation_notes, ubuntu_adapter_preview_feature_coverage,
+    ubuntu_adapter_preview_feature_coverage_records, ubuntu_preview_feature_coverage,
+    ubuntu_preview_feature_coverage_records, ubuntu_preview_feature_coverage_summary,
+    UbuntuPreviewFeatureCoverageEntry, UbuntuPreviewFeatureCoverageLane,
+    UbuntuPreviewFeatureCoverageRecord, UbuntuPreviewFeatureCoverageSummary, ValidationNote,
+    ValidationStatus,
+};

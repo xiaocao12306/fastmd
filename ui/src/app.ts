@@ -6,6 +6,7 @@ import {
   readLinuxEditLifecycleDiagnostic,
   readLinuxHoverLifecycleDiagnostic,
   readLinuxHoveredItemDiagnostic,
+  readLinuxParityCoverage,
   readLinuxProbePlanSemanticGuardrail,
   readLinuxProbePlans,
   readLinuxRuntimeDiagnostics,
@@ -226,6 +227,7 @@ export class PreviewShellApp {
         this.syncSharedRenderingSurfaceAttributes();
         this.syncLinuxProbePlanAttributes();
         this.syncLinuxPreviewPlacementAttributes();
+        this.syncLinuxParityCoverageAttributes();
         this.syncLinuxRuntimeDiagnosticAttributes();
         this.syncStatus();
       }),
@@ -328,6 +330,7 @@ export class PreviewShellApp {
     this.syncSharedRenderingSurfaceAttributes();
     this.syncLinuxProbePlanAttributes();
     this.syncLinuxPreviewPlacementAttributes();
+    this.syncLinuxParityCoverageAttributes();
     this.syncLinuxRuntimeDiagnosticAttributes();
     this.syncWidthChrome();
     this.applyBackgroundMode();
@@ -433,6 +436,47 @@ export class PreviewShellApp {
     this.shellNode.dataset.linuxPreviewAspectRatio = placement.aspectRatio;
     this.shellNode.dataset.linuxEdgeInsetPx = String(placement.edgeInsetPx);
     this.shellNode.dataset.linuxPointerOffsetPx = String(placement.pointerOffsetPx);
+  }
+
+  private syncLinuxParityCoverageAttributes(): void {
+    const parityCoverage = readLinuxParityCoverage(this.hostCapabilities);
+
+    if (!parityCoverage) {
+      delete this.shellNode.dataset.linuxParityCoverageTarget;
+      delete this.shellNode.dataset.linuxParityCoverageReferenceSurface;
+      delete this.shellNode.dataset.linuxParityCoverageMatchesReference;
+      delete this.shellNode.dataset.linuxParityCoverageCoveredFeatureCount;
+      delete this.shellNode.dataset.linuxParityCoverageReferenceFeatureCount;
+      delete this.shellNode.dataset.linuxParityCoverageMissingFeatures;
+      delete this.shellNode.dataset.linuxParityCoverageFeatureLanes;
+      return;
+    }
+
+    this.setShellData("linuxParityCoverageTarget", parityCoverage.target);
+    this.setShellData(
+      "linuxParityCoverageReferenceSurface",
+      parityCoverage.referenceSurface,
+    );
+    this.setShellData(
+      "linuxParityCoverageMatchesReference",
+      parityCoverage.matchesReference,
+    );
+    this.setShellData(
+      "linuxParityCoverageCoveredFeatureCount",
+      parityCoverage.coveredFeatureCount,
+    );
+    this.setShellData(
+      "linuxParityCoverageReferenceFeatureCount",
+      parityCoverage.referenceFeatureCount,
+    );
+    this.setShellData(
+      "linuxParityCoverageMissingFeatures",
+      JSON.stringify(parityCoverage.missingFeatures),
+    );
+    this.setShellData(
+      "linuxParityCoverageFeatureLanes",
+      JSON.stringify(parityCoverage.featureLanes),
+    );
   }
 
   private setShellData(

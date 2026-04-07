@@ -68,6 +68,7 @@ export const demoBootstrapPayload: BootstrapPayload = {
     },
     linuxProbePlans: null,
     linuxPreviewPlacement: null,
+    linuxParityCoverage: null,
     linuxRuntimeDiagnostics: null,
   },
 };
