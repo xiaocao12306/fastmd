@@ -2,7 +2,7 @@ use std::collections::BTreeSet;
 
 use fastmd_contracts::{
     macos_preview_feature_list, preview_feature_coverage_matches_reference, MacOsPreviewFeature,
-    ScreenPoint,
+    ScreenPoint, ValidationCaptureProvenance,
 };
 
 use crate::{
@@ -57,6 +57,7 @@ pub struct ValidationEvidenceSection {
 pub struct WindowsValidationEvidenceReport {
     pub target: &'static str,
     pub reference_surface: &'static str,
+    pub provenance: ValidationCaptureProvenance,
     pub sections: Vec<ValidationEvidenceSection>,
 }
 
@@ -95,6 +96,7 @@ impl WindowsValidationEvidenceReport {
             String::new(),
             format!("- Target: `{}`", self.target),
             format!("- Reference surface: `{}`", self.reference_surface),
+            format!("- Evidence provenance: `{}`", self.provenance.label()),
             format!(
                 "- Layer 6 closure readiness: `{}`",
                 if self.is_ready_to_close_all_mapped_items() {
@@ -139,19 +141,21 @@ impl WindowsValidationEvidenceReport {
 }
 
 pub fn build_windows_validation_evidence_report(
+    provenance: ValidationCaptureProvenance,
     frontmost: &FrontmostSurfaceProbe,
     hover: Option<&HoveredItemProbeOutcome>,
     translation: &WindowsCoordinateTranslation,
 ) -> WindowsValidationEvidenceReport {
-    let frontmost_section = build_frontmost_section(frontmost);
-    let hover_section = build_hover_section(frontmost, hover);
-    let coordinate_section = build_coordinate_section(translation);
+    let frontmost_section = build_frontmost_section(provenance, frontmost);
+    let hover_section = build_hover_section(provenance, frontmost, hover);
+    let coordinate_section = build_coordinate_section(provenance, translation);
     let feature_coverage_section =
         build_feature_coverage_section(&[&frontmost_section, &hover_section, &coordinate_section]);
 
     WindowsValidationEvidenceReport {
         target: WINDOWS_VALIDATION_REPORT_TARGET,
         reference_surface: MACOS_REFERENCE_BEHAVIOR.reference_surface,
+        provenance,
         sections: vec![
             frontmost_section,
             hover_section,
@@ -173,13 +177,17 @@ pub fn capture_live_windows_validation_evidence_report(
     };
 
     Ok(build_windows_validation_evidence_report(
+        ValidationCaptureProvenance::RealHostSession,
         &frontmost,
         hover.as_ref(),
         &translation,
     ))
 }
 
-fn build_frontmost_section(frontmost: &FrontmostSurfaceProbe) -> ValidationEvidenceSection {
+fn build_frontmost_section(
+    provenance: ValidationCaptureProvenance,
+    frontmost: &FrontmostSurfaceProbe,
+) -> ValidationEvidenceSection {
     let mut details = vec![
         format!(
             "Observed app identifier: `{}`",
@@ -218,36 +226,37 @@ fn build_frontmost_section(frontmost: &FrontmostSurfaceProbe) -> ValidationEvide
     }
 
     details.push(frontmost.notes.to_string());
+    append_non_live_capture_note(&mut details, provenance);
 
     ValidationEvidenceSection {
         title: "Frontmost Explorer Detection",
-        status: if frontmost.allowed {
-            EvidenceSectionStatus::Pass
-        } else {
-            EvidenceSectionStatus::Fail
-        },
+        status: evidence_status_for_probe(provenance, frontmost.allowed),
         checklist_items: &FRONTMOST_CHECKLIST_ITEMS,
         details,
     }
 }
 
 fn build_hover_section(
+    provenance: ValidationCaptureProvenance,
     frontmost: &FrontmostSurfaceProbe,
     hover: Option<&HoveredItemProbeOutcome>,
 ) -> ValidationEvidenceSection {
     let Some(hover) = hover else {
+        let mut details = vec![
+            if frontmost.allowed {
+                "Hover evidence was not captured even though Explorer was accepted as the frontmost surface.".to_string()
+            } else {
+                "Hover evidence was not captured because the current frontmost surface was not accepted as Explorer.".to_string()
+            },
+            "Run this capture again with Explorer frontmost and the pointer resting on a local `.md` item.".to_string(),
+        ];
+        append_non_live_capture_note(&mut details, provenance);
+
         return ValidationEvidenceSection {
             title: "Exact Hovered-Item Resolution",
             status: EvidenceSectionStatus::NotCaptured,
             checklist_items: &HOVER_CHECKLIST_ITEMS,
-            details: vec![
-                if frontmost.allowed {
-                    "Hover evidence was not captured even though Explorer was accepted as the frontmost surface.".to_string()
-                } else {
-                    "Hover evidence was not captured because the current frontmost surface was not accepted as Explorer.".to_string()
-                },
-                "Run this capture again with Explorer frontmost and the pointer resting on a local `.md` item.".to_string(),
-            ],
+            details,
         };
     };
 
@@ -285,20 +294,21 @@ fn build_hover_section(
     }
 
     details.push(hover.notes.to_string());
+    append_non_live_capture_note(&mut details, provenance);
 
     ValidationEvidenceSection {
         title: "Exact Hovered-Item Resolution",
-        status: if hover.accepted.is_some() && hover.rejection.is_none() {
-            EvidenceSectionStatus::Pass
-        } else {
-            EvidenceSectionStatus::Fail
-        },
+        status: evidence_status_for_probe(
+            provenance,
+            hover.accepted.is_some() && hover.rejection.is_none(),
+        ),
         checklist_items: &HOVER_CHECKLIST_ITEMS,
         details,
     }
 }
 
 fn build_coordinate_section(
+    provenance: ValidationCaptureProvenance,
     translation: &WindowsCoordinateTranslation,
 ) -> ValidationEvidenceSection {
     let selection_mode = if translation
@@ -315,28 +325,31 @@ fn build_coordinate_section(
         .as_deref()
         .unwrap_or(translation.selected_monitor.id.as_str());
 
+    let mut details = vec![
+        format!(
+            "Cursor in shared desktop space: `{}`",
+            format_point(&translation.cursor)
+        ),
+        format!("Translated monitor count: `{}`", translation.monitors.len()),
+        format!("Selected monitor: `{}`", selected_monitor_name),
+        format!("Selection mode: `{selection_mode}`"),
+        format!(
+            "Selected monitor frame: `{}`",
+            format_rect(&translation.selected_monitor.frame)
+        ),
+        format!(
+            "Selected monitor visible frame: `{}`",
+            format_rect(&translation.selected_monitor.visible_frame)
+        ),
+        translation.notes.to_string(),
+    ];
+    append_non_live_capture_note(&mut details, provenance);
+
     ValidationEvidenceSection {
         title: "Multi-Monitor Coordinate Handling",
-        status: EvidenceSectionStatus::Pass,
+        status: evidence_status_for_probe(provenance, true),
         checklist_items: &COORDINATE_CHECKLIST_ITEMS,
-        details: vec![
-            format!(
-                "Cursor in shared desktop space: `{}`",
-                format_point(&translation.cursor)
-            ),
-            format!("Translated monitor count: `{}`", translation.monitors.len()),
-            format!("Selected monitor: `{}`", selected_monitor_name),
-            format!("Selection mode: `{selection_mode}`"),
-            format!(
-                "Selected monitor frame: `{}`",
-                format_rect(&translation.selected_monitor.frame)
-            ),
-            format!(
-                "Selected monitor visible frame: `{}`",
-                format_rect(&translation.selected_monitor.visible_frame)
-            ),
-            translation.notes.to_string(),
-        ],
+        details,
     }
 }
 
@@ -449,6 +462,33 @@ fn feature_label_list(features: &[MacOsPreviewFeature]) -> String {
         .join("; ")
 }
 
+fn evidence_status_for_probe(
+    provenance: ValidationCaptureProvenance,
+    pass_condition: bool,
+) -> EvidenceSectionStatus {
+    if !provenance.satisfies_real_machine_evidence() {
+        EvidenceSectionStatus::NotCaptured
+    } else if pass_condition {
+        EvidenceSectionStatus::Pass
+    } else {
+        EvidenceSectionStatus::Fail
+    }
+}
+
+fn append_non_live_capture_note(
+    details: &mut Vec<String>,
+    provenance: ValidationCaptureProvenance,
+) {
+    if provenance.satisfies_real_machine_evidence() {
+        return;
+    }
+
+    details.push(format!(
+        "Capture provenance `{}` does not satisfy the blueprint requirement for evidence gathered on a real Windows 11 machine with Explorer frontmost, so this section remains `not-captured` even if the probe data looks parity-compliant.",
+        provenance.label()
+    ));
+}
+
 #[cfg(test)]
 mod tests {
     use std::fs;
@@ -457,6 +497,7 @@ mod tests {
 
     use fastmd_contracts::{
         FrontSurfaceKind, HoverResolutionScope, MonitorMetadata, ScreenPoint, ScreenRect,
+        ValidationCaptureProvenance,
     };
 
     use super::{
@@ -519,7 +560,9 @@ mod tests {
         }
     }
 
-    fn accepted_report() -> WindowsValidationEvidenceReport {
+    fn parity_compliant_report(
+        provenance: ValidationCaptureProvenance,
+    ) -> WindowsValidationEvidenceReport {
         let fixture = TempFixture::new();
         let markdown_path = fixture.write_file("hovered.md", "# hovered\n");
         let adapter = ExplorerAdapter::new();
@@ -545,12 +588,41 @@ mod tests {
             shell_window_id: Some("hwnd:0x10001".to_string()),
         });
 
-        build_windows_validation_evidence_report(&frontmost, Some(&hover), &sample_translation())
+        build_windows_validation_evidence_report(
+            provenance,
+            &frontmost,
+            Some(&hover),
+            &sample_translation(),
+        )
     }
 
     #[test]
-    fn report_marks_all_sections_pass_when_live_probe_inputs_are_parity_compliant() {
-        let report = accepted_report();
+    fn report_keeps_real_machine_sections_blocked_for_validation_fixtures() {
+        let report = parity_compliant_report(ValidationCaptureProvenance::ValidationFixture);
+
+        assert_eq!(report.sections.len(), 4);
+        assert_eq!(
+            report.sections[0].status,
+            EvidenceSectionStatus::NotCaptured
+        );
+        assert_eq!(
+            report.sections[1].status,
+            EvidenceSectionStatus::NotCaptured
+        );
+        assert_eq!(
+            report.sections[2].status,
+            EvidenceSectionStatus::NotCaptured
+        );
+        assert_eq!(
+            report.sections[3].status,
+            EvidenceSectionStatus::NotCaptured
+        );
+    }
+
+    #[test]
+    fn report_marks_all_sections_pass_when_real_host_provenance_and_probe_inputs_are_parity_compliant(
+    ) {
+        let report = parity_compliant_report(ValidationCaptureProvenance::RealHostSession);
 
         assert_eq!(report.sections.len(), 4);
         assert_eq!(report.sections[0].status, EvidenceSectionStatus::Pass);
@@ -568,8 +640,12 @@ mod tests {
             r"C:\Windows\System32\notepad.exe",
             "Notepad",
         ));
-        let report =
-            build_windows_validation_evidence_report(&frontmost, None, &sample_translation());
+        let report = build_windows_validation_evidence_report(
+            ValidationCaptureProvenance::RealHostSession,
+            &frontmost,
+            None,
+            &sample_translation(),
+        );
 
         assert_eq!(report.sections[0].status, EvidenceSectionStatus::Fail);
         assert_eq!(
@@ -587,7 +663,7 @@ mod tests {
 
     #[test]
     fn markdown_report_includes_real_machine_capture_command_outputs_and_feature_labels() {
-        let report = accepted_report();
+        let report = parity_compliant_report(ValidationCaptureProvenance::RealHostSession);
         let markdown = report.to_markdown();
 
         assert!(markdown.contains("# Windows 11 Explorer Validation Evidence Report"));
@@ -595,6 +671,7 @@ mod tests {
         assert!(markdown.contains("## Exact Hovered-Item Resolution"));
         assert!(markdown.contains("## Multi-Monitor Coordinate Handling"));
         assert!(markdown.contains("## Automated macOS-Parity Feature Coverage"));
+        assert!(markdown.contains("- Evidence provenance: `real-host-session`"));
         assert!(markdown.contains("- Layer 6 closure readiness: `ready-to-close`"));
         assert!(markdown.contains(
             "- Ready checklist item: Record validation evidence for frontmost Explorer detection on a real Windows 11 machine"
@@ -612,7 +689,7 @@ mod tests {
 
     #[test]
     fn report_keeps_frontmost_surface_kind_human_readable() {
-        let report = accepted_report();
+        let report = parity_compliant_report(ValidationCaptureProvenance::RealHostSession);
 
         assert!(report.sections[0]
             .details
@@ -623,6 +700,29 @@ mod tests {
 
     #[test]
     fn parity_checklist_item_stays_blocked_until_real_machine_sections_pass() {
+        let report = parity_compliant_report(ValidationCaptureProvenance::ValidationFixture);
+
+        assert!(!report.is_ready_to_close_all_mapped_items());
+        assert!(!report
+            .checklist_items_ready_for_closure()
+            .contains(
+                &"Record validation evidence for frontmost Explorer detection on a real Windows 11 machine"
+            ));
+        assert!(report
+            .checklist_items_still_blocked()
+            .contains(
+                &"Record validation evidence for frontmost Explorer detection on a real Windows 11 machine"
+            ));
+        assert!(report
+            .to_markdown()
+            .contains("- Layer 6 closure readiness: `not-ready-to-close`"));
+        assert!(report.to_markdown().contains(
+            "Capture provenance `validation-fixture` does not satisfy the blueprint requirement for evidence gathered on a real Windows 11 machine with Explorer frontmost, so this section remains `not-captured` even if the probe data looks parity-compliant."
+        ));
+    }
+
+    #[test]
+    fn parity_evidence_checklist_item_stays_blocked_until_real_host_sections_pass() {
         let adapter = ExplorerAdapter::new();
         let frontmost = adapter.classify_frontmost_surface(FrontmostWindowSnapshot::new(
             "hwnd:0x20002",
@@ -630,8 +730,12 @@ mod tests {
             r"C:\Windows\System32\notepad.exe",
             "Notepad",
         ));
-        let report =
-            build_windows_validation_evidence_report(&frontmost, None, &sample_translation());
+        let report = build_windows_validation_evidence_report(
+            ValidationCaptureProvenance::RealHostSession,
+            &frontmost,
+            None,
+            &sample_translation(),
+        );
 
         assert!(!report.is_ready_to_close_all_mapped_items());
         assert!(!report

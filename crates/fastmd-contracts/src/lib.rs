@@ -145,6 +145,28 @@ pub enum HostErrorCode {
     UnsupportedOperation,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ValidationCaptureProvenance {
+    RealHostSession,
+    ValidationFixture,
+    Synthetic,
+}
+
+impl ValidationCaptureProvenance {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::RealHostSession => "real-host-session",
+            Self::ValidationFixture => "validation-fixture",
+            Self::Synthetic => "synthetic",
+        }
+    }
+
+    pub fn satisfies_real_machine_evidence(self) -> bool {
+        matches!(self, Self::RealHostSession)
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DocumentPath(pub String);
 
@@ -1822,6 +1844,22 @@ mod tests {
         assert!(preview_feature_coverage_matches_reference(&[
             macos_preview_feature_list()
         ]));
+    }
+
+    #[test]
+    fn validation_capture_provenance_only_accepts_real_host_sessions_for_evidence_closure() {
+        assert!(ValidationCaptureProvenance::RealHostSession.satisfies_real_machine_evidence());
+        assert_eq!(
+            ValidationCaptureProvenance::RealHostSession.label(),
+            "real-host-session"
+        );
+        assert!(!ValidationCaptureProvenance::ValidationFixture.satisfies_real_machine_evidence());
+        assert_eq!(
+            ValidationCaptureProvenance::ValidationFixture.label(),
+            "validation-fixture"
+        );
+        assert!(!ValidationCaptureProvenance::Synthetic.satisfies_real_machine_evidence());
+        assert_eq!(ValidationCaptureProvenance::Synthetic.label(), "synthetic");
     }
 
     #[test]
