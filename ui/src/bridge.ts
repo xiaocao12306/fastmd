@@ -7,6 +7,7 @@ import type {
   CloseRequest,
   HostCapabilities,
   LinuxProbePlans,
+  LinuxRuntimeDiagnostics,
   PreviewGeometry,
   ScreenPoint,
   ShellState,
@@ -109,4 +110,10 @@ export async function listenToCloseRequests(
 
 export function readLinuxProbePlans(capabilities: HostCapabilities): LinuxProbePlans | null {
   return capabilities.linuxProbePlans ?? null;
+}
+
+export function readLinuxRuntimeDiagnostics(
+  capabilities: HostCapabilities,
+): LinuxRuntimeDiagnostics | null {
+  return capabilities.linuxRuntimeDiagnostics ?? null;
 }

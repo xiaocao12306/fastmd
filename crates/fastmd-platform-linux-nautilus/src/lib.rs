@@ -9,6 +9,7 @@
 
 pub mod adapter;
 pub mod backends;
+pub mod diagnostics;
 pub mod error;
 pub mod frontmost;
 pub mod geometry;
@@ -18,6 +19,13 @@ pub mod target;
 pub mod validation;
 
 pub use adapter::{FrontmostGate, NautilusPlatformAdapter, ResolvedHover};
+pub use diagnostics::{
+    display_server_label, frontmost_gate_pending_note, hovered_item_pending_note,
+    DIAGNOSTIC_STATUS_EMITTED, DIAGNOSTIC_STATUS_PENDING_LIVE_PROBE,
+    EDIT_LIFECYCLE_POLICY, EDIT_LIFECYCLE_RUNTIME_NOTE, MONITOR_SELECTION_POLICY,
+    MONITOR_SELECTION_RUNTIME_NOTE, PREVIEW_PLACEMENT_POLICY,
+    PREVIEW_PLACEMENT_RUNTIME_NOTE,
+};
 pub use error::AdapterError;
 pub use frontmost::{
     api_stack_for_display_server, resolve_frontmost_surface, FrontmostNautilusSurface,

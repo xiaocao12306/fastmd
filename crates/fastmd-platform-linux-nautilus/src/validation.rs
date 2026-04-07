@@ -88,5 +88,15 @@ pub fn crate_slice_validation_notes() -> Vec<ValidationNote> {
             status: ValidationStatus::BlockedByLowerLayers,
             note: "Shared shell parity now covers width tiers, work-area-based 4:3 placement, hint-chip chrome, Tab toggle, paged scrolling, and Escape close; hover-driven opening, edit persistence, and host-driven close paths still depend on shared-core and live Nautilus wiring.",
         },
+        ValidationNote {
+            item: "Implement the same runtime diagnostics coverage as macOS where host APIs permit",
+            status: ValidationStatus::BlockedByLowerLayers,
+            note: "The shell now emits structured Ubuntu diagnostics, but full macOS-equivalent runtime coverage still depends on live Nautilus host probes and shared-core hover wiring.",
+        },
+        ValidationNote {
+            item: "Emit Ubuntu-side diagnostics for frontmost gating, hovered-item resolution, monitor selection, preview placement, and edit lifecycle",
+            status: ValidationStatus::ImplementedInSlice,
+            note: "The Linux adapter now defines one diagnostics vocabulary consumed by the Tauri shell and shared UI, with live frontmost and hovered-item fields marked pending until host probes are wired.",
+        },
     ]
 }

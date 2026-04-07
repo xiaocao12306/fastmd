@@ -30,6 +30,7 @@ export interface HostCapabilities {
   canPersistPreviewEdits: boolean;
   linuxProbePlans?: LinuxProbePlans | null;
   linuxPreviewPlacement?: LinuxPreviewPlacement | null;
+  linuxRuntimeDiagnostics?: LinuxRuntimeDiagnostics | null;
 }
 
 export interface LinuxProbePlans {
@@ -46,6 +47,74 @@ export interface LinuxPreviewPlacement {
   aspectRatio: string;
   edgeInsetPx: number;
   pointerOffsetPx: number;
+}
+
+export interface PreviewGeometryRect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+export interface LinuxFrontmostGateDiagnostic {
+  status: string;
+  displayServer: string;
+  apiStack: string;
+  observedIdentifier?: string | null;
+  stableSurfaceId?: string | null;
+  isOpen?: boolean | null;
+  rejection?: string | null;
+  note: string;
+}
+
+export interface LinuxHoveredItemDiagnostic {
+  status: string;
+  displayServer: string;
+  apiStack: string;
+  backend?: string | null;
+  resolutionScope?: string | null;
+  entityKind?: string | null;
+  path?: string | null;
+  accepted?: boolean | null;
+  rejection?: string | null;
+  note: string;
+}
+
+export interface LinuxMonitorSelectionDiagnostic {
+  status: string;
+  selectionPolicy: string;
+  anchor?: ScreenPoint | null;
+  selectedMonitorId?: string | null;
+  usedNearestFallback?: boolean | null;
+  workArea?: PreviewGeometryRect | null;
+  note: string;
+}
+
+export interface LinuxPreviewPlacementDiagnostic {
+  status: string;
+  policy: string;
+  requestedWidth?: number | null;
+  appliedGeometry?: PreviewGeometry | null;
+  note: string;
+}
+
+export interface LinuxEditLifecycleDiagnostic {
+  status: string;
+  policy: string;
+  editing: boolean;
+  closeOnBlurEnabled: boolean;
+  canPersistPreviewEdits: boolean;
+  lastCloseReason?: string | null;
+  note: string;
+}
+
+export interface LinuxRuntimeDiagnostics {
+  displayServer: string;
+  frontmostGate: LinuxFrontmostGateDiagnostic;
+  hoveredItem: LinuxHoveredItemDiagnostic;
+  monitorSelection: LinuxMonitorSelectionDiagnostic;
+  previewPlacement: LinuxPreviewPlacementDiagnostic;
+  editLifecycle: LinuxEditLifecycleDiagnostic;
 }
 
 export interface BootstrapPayload {

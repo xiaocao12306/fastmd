@@ -2,8 +2,12 @@ use std::sync::Mutex;
 
 use fastmd_platform_linux_nautilus::{
     api_stack_for_display_server, hovered_item_api_stack_for_display_server, DisplayServerKind,
+    display_server_label, frontmost_gate_pending_note, hovered_item_pending_note,
     Monitor as PlatformMonitor, MonitorLayout as PlatformMonitorLayout,
     ScreenPoint as PlatformScreenPoint, ScreenRect as PlatformScreenRect,
+    DIAGNOSTIC_STATUS_EMITTED, DIAGNOSTIC_STATUS_PENDING_LIVE_PROBE, EDIT_LIFECYCLE_POLICY,
+    EDIT_LIFECYCLE_RUNTIME_NOTE, MONITOR_SELECTION_POLICY, MONITOR_SELECTION_RUNTIME_NOTE,
+    PREVIEW_PLACEMENT_POLICY, PREVIEW_PLACEMENT_RUNTIME_NOTE,
 };
 use serde::Serialize;
 use tauri::{
@@ -68,6 +72,7 @@ struct HostCapabilitiesPayload {
     can_persist_preview_edits: bool,
     linux_probe_plans: Option<LinuxProbePlansPayload>,
     linux_preview_placement: Option<LinuxPreviewPlacementPayload>,
+    linux_runtime_diagnostics: Option<LinuxRuntimeDiagnosticsPayload>,
 }
 
 #[derive(Clone, Serialize)]
@@ -91,6 +96,15 @@ struct PreviewGeometryPayload {
     y: i32,
     width: u32,
     height: u32,
+}
+
+#[derive(Clone, Copy, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ScreenRectPayload {
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
 }
 
 #[derive(Clone, Serialize)]
@@ -117,6 +131,86 @@ struct LinuxPreviewPlacementPayload {
     aspect_ratio: &'static str,
     edge_inset_px: u32,
     pointer_offset_px: u32,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct LinuxFrontmostGateDiagnosticPayload {
+    status: &'static str,
+    display_server: &'static str,
+    api_stack: String,
+    observed_identifier: Option<String>,
+    stable_surface_id: Option<String>,
+    is_open: Option<bool>,
+    rejection: Option<String>,
+    note: &'static str,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct LinuxHoveredItemDiagnosticPayload {
+    status: &'static str,
+    display_server: &'static str,
+    api_stack: String,
+    backend: Option<String>,
+    resolution_scope: Option<String>,
+    entity_kind: Option<String>,
+    path: Option<String>,
+    accepted: Option<bool>,
+    rejection: Option<String>,
+    note: &'static str,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct LinuxMonitorSelectionDiagnosticPayload {
+    status: &'static str,
+    selection_policy: &'static str,
+    anchor: Option<ScreenPoint>,
+    selected_monitor_id: Option<String>,
+    used_nearest_fallback: Option<bool>,
+    work_area: Option<ScreenRectPayload>,
+    note: &'static str,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct LinuxPreviewPlacementDiagnosticPayload {
+    status: &'static str,
+    policy: &'static str,
+    requested_width: Option<u32>,
+    applied_geometry: Option<PreviewGeometryPayload>,
+    note: &'static str,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct LinuxEditLifecycleDiagnosticPayload {
+    status: &'static str,
+    policy: &'static str,
+    editing: bool,
+    close_on_blur_enabled: bool,
+    can_persist_preview_edits: bool,
+    last_close_reason: Option<String>,
+    note: &'static str,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct LinuxRuntimeDiagnosticsPayload {
+    display_server: &'static str,
+    frontmost_gate: LinuxFrontmostGateDiagnosticPayload,
+    hovered_item: LinuxHoveredItemDiagnosticPayload,
+    monitor_selection: LinuxMonitorSelectionDiagnosticPayload,
+    preview_placement: LinuxPreviewPlacementDiagnosticPayload,
+    edit_lifecycle: LinuxEditLifecycleDiagnosticPayload,
+}
+
+#[derive(Clone)]
+struct SelectedMonitorWorkArea {
+    monitor_id: String,
+    work_area: PlatformScreenRect,
+    used_nearest_fallback: bool,
 }
 
 struct ShellBridgeState {
@@ -149,6 +243,7 @@ impl ShellBridgeState {
                 can_persist_preview_edits: false,
                 linux_probe_plans: linux_probe_plans_payload(),
                 linux_preview_placement: linux_preview_placement_payload(),
+                linux_runtime_diagnostics: linux_runtime_diagnostics_payload(),
             }),
             is_editing: Mutex::new(false),
             last_anchor: Mutex::new(None),
@@ -211,12 +306,167 @@ fn linux_preview_placement_payload() -> Option<LinuxPreviewPlacementPayload> {
 
     Some(LinuxPreviewPlacementPayload {
         monitor_work_area_source: "tauri-runtime-wry linux monitor.work_area via GDK/GNOME workarea",
-        monitor_selection_policy: "containing-work-area-then-nearest",
+        monitor_selection_policy: MONITOR_SELECTION_POLICY,
         coordinate_space: "desktop-space physical pixels",
         aspect_ratio: "4:3",
         edge_inset_px: PREVIEW_EDGE_INSET as u32,
         pointer_offset_px: PREVIEW_POINTER_OFFSET as u32,
     })
+}
+
+fn detected_linux_display_server() -> Option<DisplayServerKind> {
+    if !cfg!(target_os = "linux") {
+        return None;
+    }
+
+    match std::env::var("XDG_SESSION_TYPE").ok().as_deref() {
+        Some("wayland") => Some(DisplayServerKind::Wayland),
+        Some("x11") => Some(DisplayServerKind::X11),
+        _ if std::env::var_os("WAYLAND_DISPLAY").is_some() => Some(DisplayServerKind::Wayland),
+        _ if std::env::var_os("DISPLAY").is_some() => Some(DisplayServerKind::X11),
+        _ => None,
+    }
+}
+
+fn active_frontmost_api_stack_summary(display_server: Option<DisplayServerKind>) -> String {
+    match display_server {
+        Some(display_server) => api_stack_for_display_server(display_server).diagnostic_summary(),
+        None => format!(
+            "session=unknown; wayland={} ; x11={}",
+            api_stack_for_display_server(DisplayServerKind::Wayland).diagnostic_summary(),
+            api_stack_for_display_server(DisplayServerKind::X11).diagnostic_summary(),
+        ),
+    }
+}
+
+fn active_hovered_item_api_stack_summary(display_server: Option<DisplayServerKind>) -> String {
+    match display_server {
+        Some(display_server) => hovered_item_api_stack_for_display_server(display_server)
+            .diagnostic_summary(),
+        None => format!(
+            "session=unknown; wayland={} ; x11={}",
+            hovered_item_api_stack_for_display_server(DisplayServerKind::Wayland)
+                .diagnostic_summary(),
+            hovered_item_api_stack_for_display_server(DisplayServerKind::X11)
+                .diagnostic_summary(),
+        ),
+    }
+}
+
+fn linux_runtime_diagnostics_payload() -> Option<LinuxRuntimeDiagnosticsPayload> {
+    if !cfg!(target_os = "linux") {
+        return None;
+    }
+
+    let display_server = detected_linux_display_server();
+    let display_server_label = display_server_label(display_server);
+
+    Some(LinuxRuntimeDiagnosticsPayload {
+        display_server: display_server_label,
+        frontmost_gate: LinuxFrontmostGateDiagnosticPayload {
+            status: DIAGNOSTIC_STATUS_PENDING_LIVE_PROBE,
+            display_server: display_server_label,
+            api_stack: active_frontmost_api_stack_summary(display_server),
+            observed_identifier: None,
+            stable_surface_id: None,
+            is_open: None,
+            rejection: None,
+            note: frontmost_gate_pending_note(display_server),
+        },
+        hovered_item: LinuxHoveredItemDiagnosticPayload {
+            status: DIAGNOSTIC_STATUS_PENDING_LIVE_PROBE,
+            display_server: display_server_label,
+            api_stack: active_hovered_item_api_stack_summary(display_server),
+            backend: None,
+            resolution_scope: None,
+            entity_kind: None,
+            path: None,
+            accepted: None,
+            rejection: None,
+            note: hovered_item_pending_note(display_server),
+        },
+        monitor_selection: LinuxMonitorSelectionDiagnosticPayload {
+            status: DIAGNOSTIC_STATUS_EMITTED,
+            selection_policy: MONITOR_SELECTION_POLICY,
+            anchor: None,
+            selected_monitor_id: None,
+            used_nearest_fallback: None,
+            work_area: None,
+            note: MONITOR_SELECTION_RUNTIME_NOTE,
+        },
+        preview_placement: LinuxPreviewPlacementDiagnosticPayload {
+            status: DIAGNOSTIC_STATUS_EMITTED,
+            policy: PREVIEW_PLACEMENT_POLICY,
+            requested_width: Some(WIDTH_TIERS[0]),
+            applied_geometry: None,
+            note: PREVIEW_PLACEMENT_RUNTIME_NOTE,
+        },
+        edit_lifecycle: LinuxEditLifecycleDiagnosticPayload {
+            status: DIAGNOSTIC_STATUS_EMITTED,
+            policy: EDIT_LIFECYCLE_POLICY,
+            editing: false,
+            close_on_blur_enabled: true,
+            can_persist_preview_edits: false,
+            last_close_reason: None,
+            note: EDIT_LIFECYCLE_RUNTIME_NOTE,
+        },
+    })
+}
+
+fn screen_rect_payload(rect: PlatformScreenRect) -> ScreenRectPayload {
+    ScreenRectPayload {
+        x: rect.x,
+        y: rect.y,
+        width: rect.width,
+        height: rect.height,
+    }
+}
+
+fn update_linux_monitor_selection_diagnostics(
+    host_capabilities: &mut HostCapabilitiesPayload,
+    anchor: ScreenPoint,
+    selected: &SelectedMonitorWorkArea,
+) {
+    let Some(diagnostics) = host_capabilities.linux_runtime_diagnostics.as_mut() else {
+        return;
+    };
+
+    diagnostics.monitor_selection.anchor = Some(anchor);
+    diagnostics.monitor_selection.selected_monitor_id = Some(selected.monitor_id.clone());
+    diagnostics.monitor_selection.used_nearest_fallback = Some(selected.used_nearest_fallback);
+    diagnostics.monitor_selection.work_area = Some(screen_rect_payload(selected.work_area));
+}
+
+fn update_linux_preview_placement_diagnostics(
+    host_capabilities: &mut HostCapabilitiesPayload,
+    requested_width: u32,
+    geometry: &PreviewGeometryPayload,
+) {
+    let Some(diagnostics) = host_capabilities.linux_runtime_diagnostics.as_mut() else {
+        return;
+    };
+
+    diagnostics.preview_placement.requested_width = Some(requested_width);
+    diagnostics.preview_placement.applied_geometry = Some(geometry.clone());
+}
+
+fn update_linux_edit_lifecycle_diagnostics(
+    host_capabilities: &mut HostCapabilitiesPayload,
+    editing: bool,
+    last_close_reason: Option<String>,
+) {
+    let close_on_blur_enabled = host_capabilities.close_on_blur_enabled;
+    let can_persist_preview_edits = host_capabilities.can_persist_preview_edits;
+    let Some(diagnostics) = host_capabilities.linux_runtime_diagnostics.as_mut() else {
+        return;
+    };
+
+    diagnostics.edit_lifecycle.editing = editing;
+    diagnostics.edit_lifecycle.close_on_blur_enabled = close_on_blur_enabled;
+    diagnostics.edit_lifecycle.can_persist_preview_edits = can_persist_preview_edits;
+    if let Some(reason) = last_close_reason {
+        diagnostics.edit_lifecycle.last_close_reason = Some(reason);
+    }
 }
 
 fn emit_shell_state(app: &AppHandle, state: &ShellBridgeState) -> Result<(), String> {
@@ -301,16 +551,26 @@ fn platform_monitor_layout_from_tauri(
 fn selected_work_area_for_anchor(
     layout: &PlatformMonitorLayout,
     anchor: ScreenPoint,
-) -> Option<PlatformScreenRect> {
+) -> Option<SelectedMonitorWorkArea> {
+    let anchor_point = platform_screen_point(anchor);
+    let used_nearest_fallback = !layout
+        .monitors
+        .iter()
+        .any(|monitor| monitor.work_area.contains(anchor_point));
+
     layout
-        .monitor_for_point(platform_screen_point(anchor))
-        .map(|monitor| monitor.work_area)
+        .monitor_for_point(anchor_point)
+        .map(|monitor| SelectedMonitorWorkArea {
+            monitor_id: monitor.id.clone(),
+            work_area: monitor.work_area,
+            used_nearest_fallback,
+        })
 }
 
 fn preview_work_area_for_anchor(
     window: &WebviewWindow,
     anchor: ScreenPoint,
-) -> Result<PlatformScreenRect, String> {
+) -> Result<SelectedMonitorWorkArea, String> {
     let monitors = window
         .available_monitors()
         .map_err(|error| error.to_string())?;
@@ -392,14 +652,18 @@ fn apply_preview_geometry_internal(
         }
         None => current_anchor_or_monitor_center(window, state)?,
     };
-    let work_area = preview_work_area_for_anchor(window, effective_anchor)?;
+    let selected_work_area = preview_work_area_for_anchor(window, effective_anchor)?;
 
     let requested_width = {
         let shell_state = state.shell_state.lock().unwrap();
         shell_state.width_tiers[shell_state.selected_width_tier_index]
     };
 
-    let geometry = compute_preview_geometry(effective_anchor, work_area, requested_width);
+    let geometry = compute_preview_geometry(
+        effective_anchor,
+        selected_work_area.work_area,
+        requested_width,
+    );
 
     window
         .set_size(Size::Physical(PhysicalSize::new(
@@ -412,6 +676,20 @@ fn apply_preview_geometry_internal(
             geometry.x, geometry.y,
         )))
         .map_err(|error| error.to_string())?;
+
+    {
+        let mut host_capabilities = state.host_capabilities.lock().unwrap();
+        update_linux_monitor_selection_diagnostics(
+            &mut host_capabilities,
+            effective_anchor,
+            &selected_work_area,
+        );
+        update_linux_preview_placement_diagnostics(
+            &mut host_capabilities,
+            requested_width,
+            &geometry,
+        );
+    }
 
     Ok(geometry)
 }
@@ -437,6 +715,7 @@ fn set_editing_state(
     {
         let mut host_capabilities = state.host_capabilities.lock().unwrap();
         host_capabilities.close_on_blur_enabled = !editing;
+        update_linux_edit_lifecycle_diagnostics(&mut host_capabilities, editing, None);
     }
     emit_host_capabilities(&app, &state)
 }
@@ -456,6 +735,7 @@ fn adjust_width_tier(
     }
     let _ = apply_preview_geometry_internal(&window, &state, None)?;
     emit_shell_state(&app, &state)?;
+    emit_host_capabilities(&app, &state)?;
     Ok(state.snapshot_shell_state())
 }
 
@@ -498,6 +778,15 @@ fn request_preview_close(
     if *state.is_editing.lock().unwrap() {
         return Ok(());
     }
+    {
+        let mut host_capabilities = state.host_capabilities.lock().unwrap();
+        update_linux_edit_lifecycle_diagnostics(
+            &mut host_capabilities,
+            false,
+            Some(reason.clone()),
+        );
+    }
+    emit_host_capabilities(&app, &state)?;
     window.hide().map_err(|error| error.to_string())?;
     app.emit(
         CLOSE_REQUESTED_EVENT,
@@ -510,11 +799,14 @@ fn request_preview_close(
 
 #[tauri::command]
 fn apply_preview_geometry(
+    app: AppHandle,
     window: WebviewWindow,
     state: State<'_, ShellBridgeState>,
     anchor: Option<ScreenPoint>,
 ) -> Result<PreviewGeometryPayload, String> {
-    apply_preview_geometry_internal(&window, &state, anchor)
+    let geometry = apply_preview_geometry_internal(&window, &state, anchor)?;
+    emit_host_capabilities(&app, &state)?;
+    Ok(geometry)
 }
 
 #[tauri::command]
@@ -566,14 +858,22 @@ fn main() {
                 let Some(state) = window.app_handle().try_state::<ShellBridgeState>() else {
                     return;
                 };
-                if !state
-                    .host_capabilities
-                    .lock()
-                    .unwrap()
-                    .close_on_blur_enabled
-                {
+                let should_close = {
+                    let host_capabilities = state.host_capabilities.lock().unwrap();
+                    host_capabilities.close_on_blur_enabled
+                };
+                if !should_close {
                     return;
                 }
+                {
+                    let mut host_capabilities = state.host_capabilities.lock().unwrap();
+                    update_linux_edit_lifecycle_diagnostics(
+                        &mut host_capabilities,
+                        false,
+                        Some("focus-lost".to_owned()),
+                    );
+                }
+                let _ = emit_host_capabilities(window.app_handle(), &state);
                 let _ = window.hide();
                 let _ = window.app_handle().emit(
                     CLOSE_REQUESTED_EVENT,
@@ -650,6 +950,19 @@ mod tests {
     }
 
     #[test]
+    fn linux_runtime_diagnostics_are_only_advertised_on_linux_targets() {
+        let shell_state = ShellBridgeState::new();
+
+        assert_eq!(
+            shell_state
+                .snapshot_host_capabilities()
+                .linux_runtime_diagnostics
+                .is_some(),
+            cfg!(target_os = "linux")
+        );
+    }
+
+    #[test]
     fn shell_monitor_selection_prefers_containing_work_area_then_nearest() {
         let layout = PlatformMonitorLayout {
             monitors: vec![
@@ -693,27 +1006,17 @@ mod tests {
             ScreenPoint { x: 2200.0, y: 300.0 },
         )
         .unwrap();
-        assert_eq!(
-            containing,
-            PlatformScreenRect {
-                x: 1920.0,
-                y: 0.0,
-                width: 2560.0,
-                height: 1400.0,
-            }
-        );
+        assert_eq!(containing.monitor_id, "secondary");
+        assert!(!containing.used_nearest_fallback);
+        assert_eq!(containing.work_area.x, 1920.0);
+        assert_eq!(containing.work_area.width, 2560.0);
 
         let nearest =
             selected_work_area_for_anchor(&layout, ScreenPoint { x: 5000.0, y: 5000.0 }).unwrap();
-        assert_eq!(
-            nearest,
-            PlatformScreenRect {
-                x: 1920.0,
-                y: 0.0,
-                width: 2560.0,
-                height: 1400.0,
-            }
-        );
+        assert_eq!(nearest.monitor_id, "secondary");
+        assert!(nearest.used_nearest_fallback);
+        assert_eq!(nearest.work_area.x, 1920.0);
+        assert_eq!(nearest.work_area.width, 2560.0);
     }
 
     #[test]

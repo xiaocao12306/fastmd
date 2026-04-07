@@ -2,6 +2,7 @@ import {
   adjustWidthTier,
   bootstrapShell,
   readLinuxProbePlans,
+  readLinuxRuntimeDiagnostics,
   listenToCloseRequests,
   listenToHostCapabilities,
   listenToShellState,
@@ -174,6 +175,7 @@ export class PreviewShellApp {
         this.syncCapabilitySummary();
         this.syncLinuxProbePlanAttributes();
         this.syncLinuxPreviewPlacementAttributes();
+        this.syncLinuxRuntimeDiagnosticAttributes();
         this.syncStatus();
       }),
     );
@@ -271,6 +273,7 @@ export class PreviewShellApp {
     this.syncCapabilitySummary();
     this.syncLinuxProbePlanAttributes();
     this.syncLinuxPreviewPlacementAttributes();
+    this.syncLinuxRuntimeDiagnosticAttributes();
     this.syncWidthChrome();
     this.applyBackgroundMode();
     this.syncStatus();
@@ -332,6 +335,111 @@ export class PreviewShellApp {
     this.shellNode.dataset.linuxPreviewAspectRatio = placement.aspectRatio;
     this.shellNode.dataset.linuxEdgeInsetPx = String(placement.edgeInsetPx);
     this.shellNode.dataset.linuxPointerOffsetPx = String(placement.pointerOffsetPx);
+  }
+
+  private setShellData(
+    key: string,
+    value: string | number | boolean | null | undefined,
+  ): void {
+    if (value === null || value === undefined || value === "") {
+      delete this.shellNode.dataset[key];
+      return;
+    }
+
+    this.shellNode.dataset[key] = String(value);
+  }
+
+  private formatPoint(point?: { x: number; y: number } | null): string | null {
+    if (!point) {
+      return null;
+    }
+
+    return `x=${point.x},y=${point.y}`;
+  }
+
+  private formatRect(
+    rect?: { x: number; y: number; width: number; height: number } | null,
+  ): string | null {
+    if (!rect) {
+      return null;
+    }
+
+    return `x=${rect.x},y=${rect.y},width=${rect.width},height=${rect.height}`;
+  }
+
+  private syncLinuxRuntimeDiagnosticAttributes(): void {
+    const diagnostics = readLinuxRuntimeDiagnostics(this.hostCapabilities);
+
+    if (!diagnostics) {
+      for (const key of [
+        "linuxDisplayServer",
+        "linuxFrontmostGateStatus",
+        "linuxFrontmostGateApiStack",
+        "linuxFrontmostGateNote",
+        "linuxHoveredItemStatus",
+        "linuxHoveredItemApiStack",
+        "linuxHoveredItemNote",
+        "linuxMonitorSelectionStatus",
+        "linuxMonitorSelectionMonitorId",
+        "linuxMonitorSelectionFallback",
+        "linuxMonitorSelectionAnchor",
+        "linuxMonitorSelectionWorkArea",
+        "linuxPreviewPlacementStatus",
+        "linuxPreviewPlacementRequestedWidth",
+        "linuxPreviewPlacementGeometry",
+        "linuxEditLifecycleStatus",
+        "linuxEditLifecycleEditing",
+        "linuxEditLifecycleCloseOnBlur",
+        "linuxEditLifecycleLastCloseReason",
+      ]) {
+        delete this.shellNode.dataset[key];
+      }
+      return;
+    }
+
+    this.setShellData("linuxDisplayServer", diagnostics.displayServer);
+    this.setShellData("linuxFrontmostGateStatus", diagnostics.frontmostGate.status);
+    this.setShellData("linuxFrontmostGateApiStack", diagnostics.frontmostGate.apiStack);
+    this.setShellData("linuxFrontmostGateNote", diagnostics.frontmostGate.note);
+    this.setShellData("linuxHoveredItemStatus", diagnostics.hoveredItem.status);
+    this.setShellData("linuxHoveredItemApiStack", diagnostics.hoveredItem.apiStack);
+    this.setShellData("linuxHoveredItemNote", diagnostics.hoveredItem.note);
+    this.setShellData("linuxMonitorSelectionStatus", diagnostics.monitorSelection.status);
+    this.setShellData(
+      "linuxMonitorSelectionMonitorId",
+      diagnostics.monitorSelection.selectedMonitorId,
+    );
+    this.setShellData(
+      "linuxMonitorSelectionFallback",
+      diagnostics.monitorSelection.usedNearestFallback,
+    );
+    this.setShellData(
+      "linuxMonitorSelectionAnchor",
+      this.formatPoint(diagnostics.monitorSelection.anchor),
+    );
+    this.setShellData(
+      "linuxMonitorSelectionWorkArea",
+      this.formatRect(diagnostics.monitorSelection.workArea),
+    );
+    this.setShellData("linuxPreviewPlacementStatus", diagnostics.previewPlacement.status);
+    this.setShellData(
+      "linuxPreviewPlacementRequestedWidth",
+      diagnostics.previewPlacement.requestedWidth,
+    );
+    this.setShellData(
+      "linuxPreviewPlacementGeometry",
+      this.formatRect(diagnostics.previewPlacement.appliedGeometry),
+    );
+    this.setShellData("linuxEditLifecycleStatus", diagnostics.editLifecycle.status);
+    this.setShellData("linuxEditLifecycleEditing", diagnostics.editLifecycle.editing);
+    this.setShellData(
+      "linuxEditLifecycleCloseOnBlur",
+      diagnostics.editLifecycle.closeOnBlurEnabled,
+    );
+    this.setShellData(
+      "linuxEditLifecycleLastCloseReason",
+      diagnostics.editLifecycle.lastCloseReason,
+    );
   }
 
   private syncWidthChrome(): void {
