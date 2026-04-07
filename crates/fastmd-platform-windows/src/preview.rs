@@ -5,7 +5,10 @@ use fastmd_contracts::{
     PreviewState, ResolvedDocument, ScreenPoint,
 };
 use fastmd_core::CoreEngine;
-use fastmd_render::BlockMapping;
+use fastmd_render::{
+    apply_inline_edit_to_markdown, build_inline_editor_model_for_editing_state, BlockMapping,
+    InlineEditorModel,
+};
 
 use crate::{
     AcceptedMarkdownPath, AdapterError, CoordinateProbeError, ExplorerAdapter, FrontmostProbeError,
@@ -63,6 +66,71 @@ impl WindowsPreviewLoop {
         blocks: &[BlockMapping],
     ) -> Vec<AppEvent> {
         self.engine.dispatch_command(command, blocks)
+    }
+
+    pub fn request_edit_at_line(
+        &mut self,
+        target_line: u32,
+        markdown: &str,
+        blocks: &[BlockMapping],
+    ) -> Option<InlineEditorModel> {
+        let events = self.dispatch_command(AppCommand::RequestEdit { target_line }, blocks);
+        if !matches!(events.as_slice(), [AppEvent::EditSessionChanged { .. }]) {
+            return None;
+        }
+
+        self.inline_editor(markdown, blocks)
+    }
+
+    pub fn inline_editor(
+        &self,
+        markdown: &str,
+        blocks: &[BlockMapping],
+    ) -> Option<InlineEditorModel> {
+        build_inline_editor_model_for_editing_state(markdown, blocks, &self.engine.state().editing)
+    }
+
+    pub fn save_current_edit(
+        &mut self,
+        markdown: &str,
+        replacement_source: &str,
+        blocks: &[BlockMapping],
+    ) -> Option<(String, Vec<AppEvent>)> {
+        let block = self.engine.editing_block(blocks)?;
+        let replacement_markdown =
+            apply_inline_edit_to_markdown(markdown, &block, replacement_source)?;
+        let events = self.dispatch_command(
+            AppCommand::SaveEdit {
+                replacement_markdown: replacement_markdown.clone(),
+                replacement_source: replacement_source.replace("\r\n", "\n"),
+            },
+            blocks,
+        );
+        if events.is_empty() {
+            return None;
+        }
+
+        Some((replacement_markdown, events))
+    }
+
+    pub fn cancel_edit_session(&mut self) -> Vec<AppEvent> {
+        self.dispatch_command(AppCommand::CancelEdit, &[])
+    }
+
+    pub fn complete_save(
+        &mut self,
+        success: bool,
+        persisted_markdown: Option<String>,
+        message: Option<String>,
+    ) -> Vec<AppEvent> {
+        self.dispatch_command(
+            AppCommand::CompleteSave {
+                success,
+                persisted_markdown,
+                message,
+            },
+            &[],
+        )
     }
 
     /// Polls the live Windows host and forwards the resulting Explorer facts
@@ -219,9 +287,10 @@ mod tests {
     use std::time::{SystemTime, UNIX_EPOCH};
 
     use fastmd_contracts::{
-        AppCommand, AppEvent, BackgroundMode, CloseReason, MACOS_REFERENCE_BEHAVIOR, PageDirection,
-        PageInput,
+        AppCommand, AppEvent, BackgroundMode, CloseReason, EditingPhase,
+        MACOS_REFERENCE_BEHAVIOR, PageDirection, PageInput,
     };
+    use fastmd_render::{BlockKind, BlockMapping};
     use serde_json::json;
 
     use super::WindowsPreviewLoop;
@@ -398,6 +467,33 @@ mod tests {
             [AppEvent::PreviewWindowRequested { .. }]
         ));
         assert!(preview.state().visibility.visible);
+    }
+
+    fn edit_markdown() -> &'static str {
+        "line 1\nline 2\nline 3\nline 4\nline 5\nline 6\nline 7\nline 8\nline 9\nline 10"
+    }
+
+    fn edit_block_mappings() -> Vec<BlockMapping> {
+        vec![
+            BlockMapping {
+                block_id: 0,
+                kind: BlockKind::Paragraph,
+                start_line: 0,
+                end_line: 10,
+            },
+            BlockMapping {
+                block_id: 1,
+                kind: BlockKind::Blockquote,
+                start_line: 2,
+                end_line: 8,
+            },
+            BlockMapping {
+                block_id: 2,
+                kind: BlockKind::Paragraph,
+                start_line: 3,
+                end_line: 5,
+            },
+        ]
     }
 
     #[test]
@@ -746,6 +842,154 @@ mod tests {
             }]
         );
         assert!(!escape_preview.state().visibility.visible);
+    }
+
+    #[test]
+    fn inline_edit_entry_uses_smallest_block_and_maps_original_source_on_windows() {
+        let fixture = TempFixture::new();
+        let path = fixture.write_file("notes.md", edit_markdown());
+        let mut preview = WindowsPreviewLoop::new();
+        let blocks = edit_block_mappings();
+
+        open_visible_preview(&mut preview, &path);
+
+        let editor = preview
+            .request_edit_at_line(4, edit_markdown(), &blocks)
+            .expect("inline editor should open");
+
+        assert_eq!(editor.block.block_id, 2);
+        assert_eq!(editor.block.start_line, 3);
+        assert_eq!(editor.block.end_line, 5);
+        assert_eq!(editor.original_source, "line 4\nline 5");
+        assert_eq!(editor.editable_source, "line 4\nline 5");
+        assert_eq!(editor.source_line_label, "Editing source lines 4-5");
+        assert_eq!(
+            preview.state().editing.phase,
+            EditingPhase::Active
+        );
+    }
+
+    #[test]
+    fn save_and_failed_save_preserve_the_current_editor_source_on_windows() {
+        let fixture = TempFixture::new();
+        let path = fixture.write_file("notes.md", edit_markdown());
+        let mut preview = WindowsPreviewLoop::new();
+        let blocks = edit_block_mappings();
+
+        open_visible_preview(&mut preview, &path);
+        preview
+            .request_edit_at_line(4, edit_markdown(), &blocks)
+            .expect("inline editor should open");
+
+        let (replacement_markdown, save_events) = preview
+            .save_current_edit(edit_markdown(), "updated\r\nblock", &blocks)
+            .expect("save request should be emitted");
+
+        assert_eq!(
+            replacement_markdown,
+            "line 1\nline 2\nline 3\nupdated\nblock\nline 6\nline 7\nline 8\nline 9\nline 10"
+        );
+        match save_events.as_slice() {
+            [AppEvent::MarkdownSaveRequested {
+                document,
+                replacement_markdown: emitted_markdown,
+            }] => {
+                assert_eq!(document.display_name, "notes.md");
+                assert_eq!(emitted_markdown, &replacement_markdown);
+            }
+            other => panic!("unexpected save events: {other:?}"),
+        }
+        assert_eq!(preview.state().editing.phase, EditingPhase::Saving);
+        assert_eq!(
+            preview.state().editing.draft_source.as_deref(),
+            Some("updated\nblock")
+        );
+
+        let failed = preview.complete_save(false, None, Some("disk full".to_string()));
+        match failed.as_slice() {
+            [AppEvent::EditSessionChanged { editing }] => {
+                assert_eq!(editing.phase, EditingPhase::Active);
+                assert_eq!(
+                    editing.draft_markdown.as_deref(),
+                    Some(replacement_markdown.as_str())
+                );
+                assert_eq!(editing.draft_source.as_deref(), Some("updated\nblock"));
+            }
+            other => panic!("unexpected failed-save events: {other:?}"),
+        }
+
+        let editor = preview
+            .inline_editor(edit_markdown(), &blocks)
+            .expect("inline editor should stay open after a failed save");
+        assert_eq!(editor.original_source, "line 4\nline 5");
+        assert_eq!(editor.editable_source, "updated\nblock");
+
+        let canceled = preview.cancel_edit_session();
+        match canceled.as_slice() {
+            [AppEvent::EditSessionChanged { editing }] => {
+                assert_eq!(editing.phase, EditingPhase::Inactive);
+                assert_eq!(editing.draft_markdown, None);
+                assert_eq!(editing.draft_source, None);
+            }
+            other => panic!("unexpected cancel events: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn edit_mode_lock_blocks_replacement_and_close_until_cancel_or_successful_save() {
+        let fixture = TempFixture::new();
+        let current = fixture.write_file("notes.md", edit_markdown());
+        let other = fixture.write_file("other.md", "# other");
+        let mut preview = WindowsPreviewLoop::new();
+        let blocks = edit_block_mappings();
+
+        open_visible_preview(&mut preview, &current);
+        preview
+            .request_edit_at_line(4, edit_markdown(), &blocks)
+            .expect("inline editor should open");
+
+        assert!(
+            preview.dispatch_command(AppCommand::OutsideClick, &[]).is_empty()
+        );
+        assert!(preview.dispatch_command(AppCommand::Escape, &[]).is_empty());
+        assert!(
+            preview
+                .observe_probe_outputs(
+                    4_000,
+                    &non_explorer_frontmost_json(),
+                    None,
+                    None,
+                )
+                .expect("frontmost probe should classify")
+                .is_empty()
+        );
+        assert!(
+            preview
+                .observe_probe_outputs(
+                    4_000,
+                    &explorer_frontmost_json(),
+                    Some(&hovered_item_json(&other, "exact-item-under-pointer")),
+                    Some(&coordinate_json(420.0, 220.0)),
+                )
+                .expect("probe outputs should classify")
+                .is_empty()
+        );
+
+        let (persisted_markdown, _) = preview
+            .save_current_edit(edit_markdown(), "updated block", &blocks)
+            .expect("save request should be emitted");
+        assert!(
+            preview.dispatch_command(AppCommand::OutsideClick, &[]).is_empty()
+        );
+        assert!(preview.dispatch_command(AppCommand::Escape, &[]).is_empty());
+
+        preview.complete_save(true, Some(persisted_markdown), None);
+        assert_eq!(
+            preview.dispatch_command(AppCommand::Escape, &[]),
+            vec![AppEvent::PreviewWindowHidden {
+                reason: CloseReason::Escape,
+            }]
+        );
     }
 
     #[test]

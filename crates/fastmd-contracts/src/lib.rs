@@ -915,6 +915,20 @@ pub struct EditingState {
     pub target_start_line: Option<u32>,
     pub target_end_line: Option<u32>,
     pub draft_markdown: Option<String>,
+    pub draft_source: Option<String>,
+}
+
+impl EditingState {
+    pub fn target_line_range(&self) -> Option<std::ops::Range<u32>> {
+        match (self.target_start_line, self.target_end_line) {
+            (Some(start), Some(end)) if end > start => Some(start..end),
+            _ => None,
+        }
+    }
+
+    pub fn has_target_range(&self) -> bool {
+        self.target_line_range().is_some()
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -952,6 +966,7 @@ impl Default for PreviewState {
                 target_start_line: None,
                 target_end_line: None,
                 draft_markdown: None,
+                draft_source: None,
             },
             last_close_reason: None,
             selected_width_tier_index: 0,
@@ -995,6 +1010,7 @@ pub enum AppCommand {
     },
     SaveEdit {
         replacement_markdown: String,
+        replacement_source: String,
     },
     CompleteSave {
         success: bool,
@@ -1168,6 +1184,7 @@ mod tests {
             target_start_line: Some(4),
             target_end_line: Some(9),
             draft_markdown: Some("updated".to_string()),
+            draft_source: Some("updated block".to_string()),
         }
     }
 
@@ -1228,6 +1245,33 @@ mod tests {
         assert_eq!(PageInput::PageDown.direction(), PageDirection::Forward);
         assert_eq!(PageInput::ShiftSpace.direction(), PageDirection::Backward);
         assert_eq!(PageInput::PageUp.direction(), PageDirection::Backward);
+    }
+
+    #[test]
+    fn editing_state_exposes_only_valid_target_ranges() {
+        let editing = sample_editing_state();
+        assert_eq!(editing.target_line_range(), Some(4..9));
+        assert!(editing.has_target_range());
+
+        let missing_end = EditingState {
+            phase: EditingPhase::Active,
+            target_start_line: Some(4),
+            target_end_line: None,
+            draft_markdown: None,
+            draft_source: None,
+        };
+        assert_eq!(missing_end.target_line_range(), None);
+        assert!(!missing_end.has_target_range());
+
+        let inverted = EditingState {
+            phase: EditingPhase::Active,
+            target_start_line: Some(9),
+            target_end_line: Some(4),
+            draft_markdown: None,
+            draft_source: None,
+        };
+        assert_eq!(inverted.target_line_range(), None);
+        assert!(!inverted.has_target_range());
     }
 
     #[test]

@@ -1,4 +1,4 @@
-use fastmd_contracts::{BackgroundMode, RenderingReference, MACOS_REFERENCE_BEHAVIOR};
+use fastmd_contracts::{BackgroundMode, EditingState, RenderingReference, MACOS_REFERENCE_BEHAVIOR};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -118,6 +118,7 @@ pub struct InlineEditorCopy {
 pub struct InlineEditorModel {
     pub block: BlockMapping,
     pub original_source: String,
+    pub editable_source: String,
     pub source_line_label: String,
     pub return_hint: String,
     pub status_text: String,
@@ -237,6 +238,96 @@ pub fn inline_editor_copy(start_line: u32, end_line: u32) -> InlineEditorCopy {
     }
 }
 
+pub fn find_block_by_line_range(
+    blocks: &[BlockMapping],
+    start_line: u32,
+    end_line: u32,
+) -> Option<BlockMapping> {
+    blocks
+        .iter()
+        .find(|block| block.start_line == start_line && block.end_line == end_line)
+        .cloned()
+}
+
+pub fn find_block_for_editing_state(
+    blocks: &[BlockMapping],
+    editing: &EditingState,
+) -> Option<BlockMapping> {
+    let range = editing.target_line_range()?;
+    find_block_by_line_range(blocks, range.start, range.end)
+}
+
+pub fn block_source_for_mapping(markdown: &str, block: &BlockMapping) -> Option<String> {
+    let lines: Vec<&str> = markdown.split('\n').collect();
+    let start = block.start_line as usize;
+    let end = block.end_line as usize;
+
+    if end <= start || end > lines.len() {
+        return None;
+    }
+
+    Some(lines[start..end].join("\n"))
+}
+
+pub fn apply_inline_edit_to_markdown(
+    markdown: &str,
+    block: &BlockMapping,
+    replacement_source: &str,
+) -> Option<String> {
+    let lines: Vec<&str> = markdown.split('\n').collect();
+    let start = block.start_line as usize;
+    let end = block.end_line as usize;
+    if end <= start || end > lines.len() {
+        return None;
+    }
+
+    let normalized_replacement = replacement_source.replace("\r\n", "\n");
+    let replacement_lines: Vec<&str> = normalized_replacement.split('\n').collect();
+
+    Some(
+        lines[..start]
+            .iter()
+            .copied()
+            .chain(replacement_lines.iter().copied())
+            .chain(lines[end..].iter().copied())
+            .collect::<Vec<_>>()
+            .join("\n"),
+    )
+}
+
+pub fn build_inline_editor_model(
+    markdown: &str,
+    block: &BlockMapping,
+    editing: &EditingState,
+) -> Option<InlineEditorModel> {
+    let original_source = block_source_for_mapping(markdown, block)?;
+    let copy = inline_editor_copy(block.start_line, block.end_line);
+    let editable_source = editing
+        .draft_source
+        .clone()
+        .unwrap_or_else(|| original_source.clone());
+
+    Some(InlineEditorModel {
+        block: block.clone(),
+        original_source,
+        editable_source,
+        source_line_label: copy.source_line_label,
+        return_hint: copy.return_hint,
+        status_text: copy.status_text,
+        save_label: copy.save_label,
+        cancel_label: copy.cancel_label,
+    })
+}
+
+pub fn build_inline_editor_model_for_editing_state(
+    markdown: &str,
+    blocks: &[BlockMapping],
+    editing: &EditingState,
+) -> Option<InlineEditorModel> {
+    let block = find_block_for_editing_state(blocks, editing)?;
+    build_inline_editor_model(markdown, &block, editing)
+}
+
 pub fn theme_variables(background_mode: BackgroundMode) -> ThemeVariables {
     match background_mode {
         BackgroundMode::White => ThemeVariables {
@@ -351,6 +442,7 @@ pub fn find_smallest_matching_block(blocks: &[BlockMapping], line: u32) -> Optio
 #[cfg(test)]
 mod tests {
     use super::*;
+    use fastmd_contracts::{EditingPhase, EditingState};
     use std::fs;
     use std::path::PathBuf;
 
@@ -375,6 +467,10 @@ mod tests {
                 end_line: 5,
             },
         ]
+    }
+
+    fn sample_markdown() -> &'static str {
+        "line 1\nline 2\nline 3\nline 4\nline 5\nline 6\nline 7\nline 8\nline 9\nline 10"
     }
 
     #[test]
@@ -422,27 +518,32 @@ mod tests {
 
     #[test]
     fn preview_models_are_serializable_frontend_dtos() {
-        let copy = inline_editor_copy(3, 5);
+        let editing = EditingState {
+            phase: EditingPhase::Active,
+            target_start_line: Some(3),
+            target_end_line: Some(5),
+            draft_markdown: None,
+            draft_source: None,
+        };
         let model = preview_model(
             "spec.md",
             "# Title",
             8,
             BackgroundMode::Black,
             sample_blocks(),
-            Some(InlineEditorModel {
-                block: BlockMapping {
-                    block_id: 2,
-                    kind: BlockKind::Paragraph,
-                    start_line: 3,
-                    end_line: 5,
-                },
-                original_source: "hello".to_string(),
-                source_line_label: copy.source_line_label,
-                return_hint: copy.return_hint,
-                status_text: copy.status_text,
-                save_label: copy.save_label,
-                cancel_label: copy.cancel_label,
-            }),
+            Some(
+                build_inline_editor_model(
+                    sample_markdown(),
+                    &BlockMapping {
+                        block_id: 2,
+                        kind: BlockKind::Paragraph,
+                        start_line: 3,
+                        end_line: 5,
+                    },
+                    &editing,
+                )
+                .expect("inline editor model"),
+            ),
         );
 
         assert_eq!(model.chrome.toolbar_eyebrow, "FastMD Preview");
@@ -458,8 +559,8 @@ mod tests {
             model
                 .inline_editor
                 .as_ref()
-                .map(|editor| editor.source_line_label.as_str()),
-            Some("Editing source lines 4-5")
+                .map(|editor| (editor.source_line_label.as_str(), editor.editable_source.as_str())),
+            Some(("Editing source lines 4-5", "line 4\nline 5"))
         );
 
         let encoded = serde_json::to_string(&model).expect("serialize");
@@ -591,6 +692,35 @@ mod tests {
             assert!(fixture.contains("<details open>"));
             assert!(fixture.contains("<div style="));
         }
+    }
+
+    #[test]
+    fn edit_source_helpers_follow_macos_line_mapping_and_splice_rules() {
+        let blocks = sample_blocks();
+        let editing = EditingState {
+            phase: EditingPhase::Active,
+            target_start_line: Some(3),
+            target_end_line: Some(5),
+            draft_markdown: Some("line 1\nline 2\nline 3\nupdated\nblock\nline 6\nline 7\nline 8\nline 9\nline 10".to_string()),
+            draft_source: Some("updated\nblock".to_string()),
+        };
+
+        let block = find_block_by_line_range(&blocks, 3, 5).expect("block");
+        assert_eq!(block.block_id, 2);
+        assert_eq!(
+            block_source_for_mapping(sample_markdown(), &block).as_deref(),
+            Some("line 4\nline 5")
+        );
+        assert_eq!(
+            apply_inline_edit_to_markdown(sample_markdown(), &block, "updated\r\nblock").as_deref(),
+            Some("line 1\nline 2\nline 3\nupdated\nblock\nline 6\nline 7\nline 8\nline 9\nline 10")
+        );
+
+        let model = build_inline_editor_model_for_editing_state(sample_markdown(), &blocks, &editing)
+            .expect("inline editor model");
+        assert_eq!(model.original_source, "line 4\nline 5");
+        assert_eq!(model.editable_source, "updated\nblock");
+        assert_eq!(model.source_line_label, "Editing source lines 4-5");
     }
 
     fn markdown_renderer_swift_path() -> PathBuf {

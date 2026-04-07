@@ -155,8 +155,8 @@ pub static WINDOWS_VALIDATION_FEATURES: [AdapterValidationFeature; 26] = [
     },
     AdapterValidationFeature {
         blueprint_item: "Implement the same inline block editing entry rule, edit source mapping behavior, edit save and cancel behavior, and edit-mode lock behavior as macOS",
-        status: FeatureStatus::PendingAdapterWork,
-        evidence: "Shared contracts/core already define the edit lifecycle, but the Windows lane still needs crate-local end-to-end wiring and Windows-specific validation evidence for edit entry, block mapping, save/cancel flow, and lock semantics.",
+        status: FeatureStatus::ImplementedInThisCrate,
+        evidence: "WindowsPreviewLoop now opens edit sessions through the shared smallest-block selector, builds inline-editor DTOs from shared render block mappings, preserves the current textarea source across failed saves through the shared edit state, composes full-document save payloads with macOS-matching line-splice semantics, and proves crate-local lock behavior for hover replacement and close commands while edit mode is active or saving.",
     },
     AdapterValidationFeature {
         blueprint_item: "Implement the same runtime diagnostics coverage as macOS where host APIs permit",
@@ -207,14 +207,18 @@ mod tests {
             .filter(|feature| feature.status.is_complete())
             .count();
 
-        assert_eq!(implemented_in_crate, 13);
+        assert_eq!(implemented_in_crate, 14);
         assert_eq!(implemented_via_shared, 11);
-        assert_eq!(completed, 24);
+        assert_eq!(completed, 25);
         assert!(
             manifest
                 .features
                 .iter()
-                .any(|feature| feature.status == FeatureStatus::PendingAdapterWork)
+                .any(|feature| {
+                    feature.status == FeatureStatus::PendingAdapterWork
+                        && feature.blueprint_item
+                            == "Implement the same runtime diagnostics coverage as macOS where host APIs permit"
+                })
         );
         assert!(
             manifest

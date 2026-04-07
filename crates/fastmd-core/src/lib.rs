@@ -5,7 +5,7 @@ use fastmd_contracts::{
     PageInput, PagingMotion, PreviewState, PreviewWindowRequest, ResolvedDocument, ScreenPoint,
     ScreenRect, MACOS_REFERENCE_BEHAVIOR,
 };
-use fastmd_render::{find_smallest_matching_block, BlockMapping};
+use fastmd_render::{find_block_for_editing_state, find_smallest_matching_block, BlockMapping};
 
 #[derive(Debug, Clone)]
 pub struct CoreEngine {
@@ -66,7 +66,8 @@ impl CoreEngine {
             AppCommand::RequestEdit { target_line } => self.begin_edit_at_line(target_line, blocks),
             AppCommand::SaveEdit {
                 replacement_markdown,
-            } => self.save_edit(replacement_markdown),
+                replacement_source,
+            } => self.save_edit(replacement_markdown, replacement_source),
             AppCommand::CompleteSave {
                 success,
                 persisted_markdown: _,
@@ -268,13 +269,18 @@ impl CoreEngine {
         self.state.editing.target_start_line = Some(block.start_line);
         self.state.editing.target_end_line = Some(block.end_line);
         self.state.editing.draft_markdown = None;
+        self.state.editing.draft_source = None;
 
         vec![AppEvent::EditSessionChanged {
             editing: self.state.editing.clone(),
         }]
     }
 
-    pub fn save_edit(&mut self, replacement_markdown: String) -> Vec<AppEvent> {
+    pub fn save_edit(
+        &mut self,
+        replacement_markdown: String,
+        replacement_source: String,
+    ) -> Vec<AppEvent> {
         if self.state.editing.phase != EditingPhase::Active {
             return Vec::new();
         }
@@ -285,6 +291,7 @@ impl CoreEngine {
 
         self.state.editing.phase = EditingPhase::Saving;
         self.state.editing.draft_markdown = Some(replacement_markdown.clone());
+        self.state.editing.draft_source = Some(replacement_source);
 
         vec![AppEvent::MarkdownSaveRequested {
             document,
@@ -302,6 +309,7 @@ impl CoreEngine {
             self.state.editing.target_start_line = None;
             self.state.editing.target_end_line = None;
             self.state.editing.draft_markdown = None;
+            self.state.editing.draft_source = None;
         } else {
             self.state.editing.phase = EditingPhase::Active;
         }
@@ -320,6 +328,7 @@ impl CoreEngine {
         self.state.editing.target_start_line = None;
         self.state.editing.target_end_line = None;
         self.state.editing.draft_markdown = None;
+        self.state.editing.draft_source = None;
 
         vec![AppEvent::EditSessionChanged {
             editing: self.state.editing.clone(),
@@ -382,6 +391,10 @@ impl CoreEngine {
             .last_request
             .as_ref()
             .map(|request| request.anchor.clone())
+    }
+
+    pub fn editing_block(&self, blocks: &[BlockMapping]) -> Option<BlockMapping> {
+        find_block_for_editing_state(blocks, &self.state.editing)
     }
 }
 
@@ -1459,7 +1472,8 @@ mod tests {
             )
             .is_empty());
 
-        let save_requested = engine.save_edit("updated markdown".to_string());
+        let save_requested =
+            engine.save_edit("updated markdown".to_string(), "updated block".to_string());
         match &save_requested[0] {
             AppEvent::MarkdownSaveRequested {
                 document,
@@ -1478,6 +1492,7 @@ mod tests {
             AppEvent::EditSessionChanged { editing } => {
                 assert_eq!(editing.phase, EditingPhase::Active);
                 assert_eq!(editing.draft_markdown.as_deref(), Some("updated markdown"));
+                assert_eq!(editing.draft_source.as_deref(), Some("updated block"));
             }
             other => panic!("unexpected event: {other:?}"),
         }
@@ -1491,14 +1506,70 @@ mod tests {
         }
 
         engine.begin_edit_at_line(4, &block_mappings());
-        engine.save_edit("final markdown".to_string());
+        engine.save_edit("final markdown".to_string(), "final block".to_string());
         let completed = engine.complete_save(true);
         match &completed[0] {
             AppEvent::EditSessionChanged { editing } => {
                 assert_eq!(editing.phase, EditingPhase::Inactive);
                 assert_eq!(editing.draft_markdown, None);
+                assert_eq!(editing.draft_source, None);
             }
             other => panic!("unexpected event: {other:?}"),
         }
+    }
+
+    #[test]
+    fn saving_edit_mode_keeps_preview_locked_until_the_save_completes() {
+        let mut engine = CoreEngine::new();
+
+        engine.observe_hover(
+            0,
+            finder_surface(true, "finder-window-1"),
+            Some(hovered_markdown("/Users/example/Docs/a.md", 180.0, 780.0)),
+            Some(monitor()),
+        );
+        engine.observe_hover(
+            1_000,
+            finder_surface(true, "finder-window-1"),
+            Some(hovered_markdown("/Users/example/Docs/a.md", 180.0, 780.0)),
+            None,
+        );
+
+        engine.begin_edit_at_line(4, &block_mappings());
+        engine.save_edit("updated markdown".to_string(), "updated block".to_string());
+        assert_eq!(engine.state().editing.phase, EditingPhase::Saving);
+        assert_eq!(engine.state().editing.draft_source.as_deref(), Some("updated block"));
+        assert_eq!(
+            engine
+                .editing_block(&block_mappings())
+                .map(|block| block.block_id),
+            Some(2)
+        );
+
+        assert!(engine
+            .observe_hover(
+                4_000,
+                finder_surface(true, "finder-window-1"),
+                Some(hovered_markdown("/Users/example/Docs/b.md", 220.0, 740.0)),
+                None,
+            )
+            .is_empty());
+        assert!(engine.outside_click().is_empty());
+        assert!(engine
+            .front_surface_changed(finder_surface(false, "finder-window-1"))
+            .is_empty());
+        assert!(engine.escape_pressed().is_empty());
+
+        let completed = engine.complete_save(true);
+        assert!(matches!(
+            completed.as_slice(),
+            [AppEvent::EditSessionChanged { .. }]
+        ));
+        assert_eq!(
+            engine.escape_pressed(),
+            vec![AppEvent::PreviewWindowHidden {
+                reason: CloseReason::Escape,
+            }]
+        );
     }
 }
