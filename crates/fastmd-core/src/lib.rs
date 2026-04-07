@@ -2,8 +2,8 @@ use std::cmp::Ordering;
 
 use fastmd_contracts::{
     AppCommand, AppEvent, CloseReason, EditingPhase, FrontSurface, HoveredItem, MonitorMetadata,
-    PageInput, PagingMotion, PreviewState, PreviewWindowRequest, ResolvedDocument, ScreenPoint,
-    ScreenRect, MACOS_REFERENCE_BEHAVIOR,
+    PageInput, PagingMotion, PreviewState, PreviewWindowRequest, ResolvedDocument,
+    RuntimeDiagnostic, ScreenPoint, ScreenRect, MACOS_REFERENCE_BEHAVIOR,
 };
 use fastmd_render::{find_block_for_editing_state, find_smallest_matching_block, BlockMapping};
 
@@ -74,6 +74,9 @@ impl CoreEngine {
                 message: _,
             } => self.complete_save(success),
             AppCommand::CancelEdit => self.cancel_edit(),
+            AppCommand::ReportRuntimeDiagnostics { diagnostics } => {
+                self.report_runtime_diagnostics(diagnostics)
+            }
         }
     }
 
@@ -333,6 +336,17 @@ impl CoreEngine {
         vec![AppEvent::EditSessionChanged {
             editing: self.state.editing.clone(),
         }]
+    }
+
+    pub fn report_runtime_diagnostics(
+        &mut self,
+        diagnostics: Vec<RuntimeDiagnostic>,
+    ) -> Vec<AppEvent> {
+        if diagnostics.is_empty() {
+            return Vec::new();
+        }
+
+        vec![AppEvent::RuntimeDiagnosticsReported { diagnostics }]
     }
 
     fn can_consume_hot_interaction(&self) -> bool {
@@ -1538,7 +1552,10 @@ mod tests {
         engine.begin_edit_at_line(4, &block_mappings());
         engine.save_edit("updated markdown".to_string(), "updated block".to_string());
         assert_eq!(engine.state().editing.phase, EditingPhase::Saving);
-        assert_eq!(engine.state().editing.draft_source.as_deref(), Some("updated block"));
+        assert_eq!(
+            engine.state().editing.draft_source.as_deref(),
+            Some("updated block")
+        );
         assert_eq!(
             engine
                 .editing_block(&block_mappings())
@@ -1570,6 +1587,29 @@ mod tests {
             vec![AppEvent::PreviewWindowHidden {
                 reason: CloseReason::Escape,
             }]
+        );
+    }
+
+    #[test]
+    fn runtime_diagnostics_flow_through_the_shared_command_event_bridge() {
+        let mut engine = CoreEngine::new();
+        let diagnostics = vec![RuntimeDiagnostic::new(
+            fastmd_contracts::PlatformId::WindowsExplorer,
+            fastmd_contracts::RuntimeDiagnosticLevel::Info,
+            fastmd_contracts::RuntimeDiagnosticCategory::FrontmostGating,
+            "Explorer frontmost gating accepted the foreground surface",
+        )
+        .at_ms(1_500)
+        .with_detail("window_class", "CabinetWClass")];
+
+        assert_eq!(
+            engine.dispatch_command(
+                AppCommand::ReportRuntimeDiagnostics {
+                    diagnostics: diagnostics.clone(),
+                },
+                &[],
+            ),
+            vec![AppEvent::RuntimeDiagnosticsReported { diagnostics }]
         );
     }
 }

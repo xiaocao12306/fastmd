@@ -27,7 +27,7 @@ use crate::parity::{
     WindowsExplorerStage2Target,
 };
 use crate::validation::{AdapterValidationManifest, windows_validation_manifest};
-use fastmd_contracts::{FrontSurface, ScreenPoint};
+use fastmd_contracts::{FrontSurface, RuntimeDiagnostic, ScreenPoint};
 
 /// Windows host API seams that still need real Explorer-backed implementations.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -281,11 +281,11 @@ impl ExplorerAdapter {
         ))
     }
 
-    pub fn emit_runtime_diagnostic(&self, _message: &str) -> Result<(), AdapterError> {
-        Err(self.host_call_unavailable(
-            HostApi::RuntimeDiagnostics,
-            "runtime diagnostics coverage matching the macOS adapter where Windows host APIs permit",
-        ))
+    pub fn emit_runtime_diagnostic(
+        &self,
+        diagnostic: RuntimeDiagnostic,
+    ) -> Result<RuntimeDiagnostic, AdapterError> {
+        Ok(diagnostic)
     }
 
     fn host_call_unavailable(

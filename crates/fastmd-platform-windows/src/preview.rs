@@ -2,12 +2,13 @@ use std::fmt;
 
 use fastmd_contracts::{
     AppCommand, AppEvent, DocumentKind, DocumentOrigin, HoverResolutionScope, HoveredItem,
-    PreviewState, ResolvedDocument, ScreenPoint,
+    PlatformId, PreviewState, PreviewWindowRequest, ResolvedDocument, RuntimeDiagnostic,
+    RuntimeDiagnosticCategory, RuntimeDiagnosticLevel, ScreenPoint,
 };
 use fastmd_core::CoreEngine;
 use fastmd_render::{
-    apply_inline_edit_to_markdown, build_inline_editor_model_for_editing_state, BlockMapping,
-    InlineEditorModel,
+    BlockMapping, InlineEditorModel, apply_inline_edit_to_markdown,
+    build_inline_editor_model_for_editing_state,
 };
 
 use crate::{
@@ -65,7 +66,7 @@ impl WindowsPreviewLoop {
         command: AppCommand,
         blocks: &[BlockMapping],
     ) -> Vec<AppEvent> {
-        self.engine.dispatch_command(command, blocks)
+        self.dispatch_command_with_runtime_diagnostics(command, blocks, Vec::new())
     }
 
     pub fn request_edit_at_line(
@@ -75,7 +76,10 @@ impl WindowsPreviewLoop {
         blocks: &[BlockMapping],
     ) -> Option<InlineEditorModel> {
         let events = self.dispatch_command(AppCommand::RequestEdit { target_line }, blocks);
-        if !matches!(events.as_slice(), [AppEvent::EditSessionChanged { .. }]) {
+        let product_events = non_diagnostic_event_refs(&events);
+        if product_events.len() != 1
+            || !matches!(product_events[0], &AppEvent::EditSessionChanged { .. })
+        {
             return None;
         }
 
@@ -142,9 +146,7 @@ impl WindowsPreviewLoop {
             .map_err(PreviewLoopError::Adapter)?;
 
         if !frontmost.allowed {
-            return Ok(self
-                .engine
-                .observe_hover(at_ms, frontmost.observed_surface, None, None));
+            return Ok(self.observe_frontmost_probe(at_ms, frontmost));
         }
 
         let translation = self
@@ -179,9 +181,7 @@ impl WindowsPreviewLoop {
             .map_err(PreviewLoopError::FrontmostProbe)?;
 
         if !frontmost.allowed {
-            return Ok(self
-                .engine
-                .observe_hover(at_ms, frontmost.observed_surface, None, None));
+            return Ok(self.observe_frontmost_probe(at_ms, frontmost));
         }
 
         let hover_raw =
@@ -214,16 +214,64 @@ impl WindowsPreviewLoop {
             .accepted
             .as_ref()
             .map(|accepted| hovered_item_from_probe(accepted, &hover, &translation));
+        let front_surface = frontmost.observed_surface.clone();
+        let selected_monitor = translation.selected_monitor.clone();
+        let additional_diagnostics = vec![
+            frontmost_runtime_diagnostic(at_ms, &frontmost),
+            hover_runtime_diagnostic(at_ms, &hover),
+            monitor_selection_runtime_diagnostic(at_ms, &translation),
+        ];
 
-        self.dispatch_command(
+        self.dispatch_command_with_runtime_diagnostics(
             AppCommand::ObserveHover {
                 at_ms,
-                front_surface: frontmost.observed_surface,
+                front_surface,
                 hovered_item,
-                monitor: Some(translation.selected_monitor),
+                monitor: Some(selected_monitor),
             },
             &[],
+            additional_diagnostics,
         )
+    }
+
+    fn observe_frontmost_probe(
+        &mut self,
+        at_ms: u64,
+        frontmost: FrontmostSurfaceProbe,
+    ) -> Vec<AppEvent> {
+        let front_surface = frontmost.observed_surface.clone();
+        self.dispatch_command_with_runtime_diagnostics(
+            AppCommand::ObserveHover {
+                at_ms,
+                front_surface,
+                hovered_item: None,
+                monitor: None,
+            },
+            &[],
+            vec![frontmost_runtime_diagnostic(at_ms, &frontmost)],
+        )
+    }
+
+    fn dispatch_command_with_runtime_diagnostics(
+        &mut self,
+        command: AppCommand,
+        blocks: &[BlockMapping],
+        mut additional_diagnostics: Vec<RuntimeDiagnostic>,
+    ) -> Vec<AppEvent> {
+        let mut events = self.engine.dispatch_command(command.clone(), blocks);
+        additional_diagnostics.extend(runtime_diagnostics_for_command(&command, &events));
+
+        if additional_diagnostics.is_empty() {
+            return events;
+        }
+
+        events.extend(self.engine.dispatch_command(
+            AppCommand::ReportRuntimeDiagnostics {
+                diagnostics: additional_diagnostics,
+            },
+            &[],
+        ));
+        events
     }
 }
 
@@ -280,6 +328,278 @@ fn hover_scope_label(scope: HoverResolutionScope) -> &'static str {
     }
 }
 
+fn non_diagnostic_event_refs(events: &[AppEvent]) -> Vec<&AppEvent> {
+    events
+        .iter()
+        .filter(|event| !matches!(event, AppEvent::RuntimeDiagnosticsReported { .. }))
+        .collect()
+}
+
+fn runtime_diagnostics_for_command(
+    command: &AppCommand,
+    events: &[AppEvent],
+) -> Vec<RuntimeDiagnostic> {
+    let mut diagnostics = Vec::new();
+
+    for event in non_diagnostic_event_refs(events) {
+        match (command, event) {
+            (
+                AppCommand::ObserveHover { at_ms, .. },
+                AppEvent::PreviewWindowRequested { request },
+            ) => diagnostics.push(preview_placement_runtime_diagnostic(
+                Some(*at_ms),
+                "Windows preview placement opened a preview through the shared 4:3 geometry policy",
+                request,
+            )),
+            (
+                AppCommand::AdjustWidthTier { .. },
+                AppEvent::PreviewWindowRequested { request },
+            ) => diagnostics.push(preview_placement_runtime_diagnostic(
+                None,
+                "Windows preview placement recomputed the preview frame after a width-tier change",
+                request,
+            )),
+            (
+                AppCommand::RequestEdit { target_line },
+                AppEvent::EditSessionChanged { editing },
+            ) => diagnostics.push(
+                RuntimeDiagnostic::new(
+                    PlatformId::WindowsExplorer,
+                    RuntimeDiagnosticLevel::Info,
+                    RuntimeDiagnosticCategory::EditLifecycle,
+                    "Windows edit lifecycle entered inline edit mode through the shared smallest-block rule",
+                )
+                .with_detail("target_line", target_line.to_string())
+                .with_detail(
+                    "target_start_line",
+                    editing
+                        .target_start_line
+                        .map(|line| line.to_string())
+                        .unwrap_or_else(|| "none".to_string()),
+                )
+                .with_detail(
+                    "target_end_line",
+                    editing
+                        .target_end_line
+                        .map(|line| line.to_string())
+                        .unwrap_or_else(|| "none".to_string()),
+                ),
+            ),
+            (
+                AppCommand::SaveEdit {
+                    replacement_source, ..
+                },
+                AppEvent::MarkdownSaveRequested { document, .. },
+            ) => diagnostics.push(
+                RuntimeDiagnostic::new(
+                    PlatformId::WindowsExplorer,
+                    RuntimeDiagnosticLevel::Info,
+                    RuntimeDiagnosticCategory::EditLifecycle,
+                    "Windows edit lifecycle requested a Markdown save through the shared save contract",
+                )
+                .with_detail("document_path", document.path.clone())
+                .with_detail(
+                    "replacement_line_count",
+                    replacement_source.lines().count().to_string(),
+                ),
+            ),
+            (
+                AppCommand::CompleteSave {
+                    success, message, ..
+                },
+                AppEvent::EditSessionChanged { editing },
+            ) => {
+                let level = if *success {
+                    RuntimeDiagnosticLevel::Info
+                } else {
+                    RuntimeDiagnosticLevel::Error
+                };
+                let summary = if *success {
+                    "Windows edit lifecycle completed a save and unlocked edit mode"
+                } else {
+                    "Windows edit lifecycle reported a failed save and restored the active draft"
+                };
+                let mut diagnostic = RuntimeDiagnostic::new(
+                    PlatformId::WindowsExplorer,
+                    level,
+                    RuntimeDiagnosticCategory::EditLifecycle,
+                    summary,
+                )
+                .with_detail("editing_phase", format!("{:?}", editing.phase));
+                if let Some(message) = message.as_deref() {
+                    diagnostic = diagnostic.with_detail("message", message.to_string());
+                }
+                diagnostics.push(diagnostic);
+            }
+            (AppCommand::CancelEdit, AppEvent::EditSessionChanged { editing }) => diagnostics
+                .push(
+                    RuntimeDiagnostic::new(
+                        PlatformId::WindowsExplorer,
+                        RuntimeDiagnosticLevel::Info,
+                        RuntimeDiagnosticCategory::EditLifecycle,
+                        "Windows edit lifecycle cancelled the active inline edit session",
+                    )
+                    .with_detail("editing_phase", format!("{:?}", editing.phase)),
+                ),
+            _ => {}
+        }
+    }
+
+    diagnostics
+}
+
+fn preview_placement_runtime_diagnostic(
+    at_ms: Option<u64>,
+    summary: &'static str,
+    request: &PreviewWindowRequest,
+) -> RuntimeDiagnostic {
+    let mut diagnostic = RuntimeDiagnostic::new(
+        PlatformId::WindowsExplorer,
+        RuntimeDiagnosticLevel::Info,
+        RuntimeDiagnosticCategory::PreviewPlacement,
+        summary,
+    )
+    .with_detail("document_path", request.document.path.clone())
+    .with_detail(
+        "monitor_id",
+        request
+            .monitor_id
+            .clone()
+            .unwrap_or_else(|| "none".to_string()),
+    )
+    .with_detail(
+        "selected_width_tier_index",
+        request.selected_width_tier_index.to_string(),
+    )
+    .with_detail("requested_width_px", request.requested_width_px.to_string())
+    .with_detail("frame_x", format!("{:.1}", request.frame.x))
+    .with_detail("frame_y", format!("{:.1}", request.frame.y))
+    .with_detail("frame_width", format!("{:.1}", request.frame.width))
+    .with_detail("frame_height", format!("{:.1}", request.frame.height));
+
+    if let Some(at_ms) = at_ms {
+        diagnostic = diagnostic.at_ms(at_ms);
+    }
+
+    diagnostic
+}
+
+fn frontmost_runtime_diagnostic(
+    at_ms: u64,
+    frontmost: &FrontmostSurfaceProbe,
+) -> RuntimeDiagnostic {
+    let mut diagnostic = RuntimeDiagnostic::new(
+        PlatformId::WindowsExplorer,
+        if frontmost.allowed {
+            RuntimeDiagnosticLevel::Info
+        } else {
+            RuntimeDiagnosticLevel::Warning
+        },
+        RuntimeDiagnosticCategory::FrontmostGating,
+        if frontmost.allowed {
+            "Explorer frontmost gating accepted the current foreground surface"
+        } else {
+            "Explorer frontmost gating rejected the current foreground surface"
+        },
+    )
+    .at_ms(at_ms)
+    .with_detail(
+        "observed_app_identifier",
+        frontmost.observed_surface.app_identifier.clone(),
+    )
+    .with_detail(
+        "observed_surface_kind",
+        format!("{:?}", frontmost.observed_surface.surface_kind),
+    )
+    .with_detail("expected_host", frontmost.allowed.to_string())
+    .with_detail("notes", frontmost.notes.to_string());
+
+    if let Some(identity) = frontmost.observed_surface.stable_identity() {
+        diagnostic = diagnostic
+            .with_detail("native_window_id", identity.native_window_id.clone())
+            .with_detail(
+                "process_id",
+                identity
+                    .process_id
+                    .map(|value| value.to_string())
+                    .unwrap_or_else(|| "none".to_string()),
+            );
+    }
+    if let Some(rejection) = &frontmost.rejection {
+        diagnostic = diagnostic.with_detail("rejection", rejection.to_string());
+    }
+
+    diagnostic
+}
+
+fn hover_runtime_diagnostic(at_ms: u64, hover: &HoveredItemProbeOutcome) -> RuntimeDiagnostic {
+    let mut diagnostic = RuntimeDiagnostic::new(
+        PlatformId::WindowsExplorer,
+        if hover.accepted.is_some() {
+            RuntimeDiagnosticLevel::Info
+        } else {
+            RuntimeDiagnosticLevel::Warning
+        },
+        RuntimeDiagnosticCategory::HoveredItemResolution,
+        if hover.accepted.is_some() {
+            "Windows hovered-item resolution accepted the actual hovered Markdown target"
+        } else {
+            "Windows hovered-item resolution rejected the current hover target before preview open"
+        },
+    )
+    .at_ms(at_ms)
+    .with_detail(
+        "resolution_scope",
+        hover_scope_label(hover.snapshot.resolution_scope).to_string(),
+    )
+    .with_detail("backend", hover.snapshot.backend.clone())
+    .with_detail("notes", hover.notes.to_string());
+
+    if let Some(element_name) = hover.snapshot.element_name.as_deref() {
+        diagnostic = diagnostic.with_detail("element_name", element_name.to_string());
+    }
+    if let Some(path) = hover
+        .accepted
+        .as_ref()
+        .map(|accepted| accepted.path().display().to_string())
+    {
+        diagnostic = diagnostic.with_detail("accepted_path", path);
+    }
+    if let Some(rejection) = &hover.rejection {
+        diagnostic = diagnostic.with_detail("rejection", rejection.to_string());
+    }
+
+    diagnostic
+}
+
+fn monitor_selection_runtime_diagnostic(
+    at_ms: u64,
+    translation: &WindowsCoordinateTranslation,
+) -> RuntimeDiagnostic {
+    RuntimeDiagnostic::new(
+        PlatformId::WindowsExplorer,
+        RuntimeDiagnosticLevel::Info,
+        RuntimeDiagnosticCategory::MonitorSelection,
+        "Windows monitor selection classified the pointer into the shared desktop-space model",
+    )
+    .at_ms(at_ms)
+    .with_detail("cursor_x", format!("{:.1}", translation.cursor.x))
+    .with_detail("cursor_y", format!("{:.1}", translation.cursor.y))
+    .with_detail(
+        "selected_monitor_id",
+        translation.selected_monitor.id.clone(),
+    )
+    .with_detail("monitor_count", translation.monitors.len().to_string())
+    .with_detail(
+        "contains_cursor",
+        translation
+            .selected_monitor
+            .contains_point_in_visible_frame(&translation.cursor)
+            .to_string(),
+    )
+    .with_detail("notes", translation.notes.to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use std::fs;
@@ -287,8 +607,8 @@ mod tests {
     use std::time::{SystemTime, UNIX_EPOCH};
 
     use fastmd_contracts::{
-        AppCommand, AppEvent, BackgroundMode, CloseReason, EditingPhase,
-        MACOS_REFERENCE_BEHAVIOR, PageDirection, PageInput,
+        AppCommand, AppEvent, BackgroundMode, CloseReason, EditingPhase, MACOS_REFERENCE_BEHAVIOR,
+        PageDirection, PageInput, RuntimeDiagnostic, RuntimeDiagnosticCategory,
     };
     use fastmd_render::{BlockKind, BlockMapping};
     use serde_json::json;
@@ -440,17 +760,37 @@ mod tests {
         .to_string()
     }
 
+    fn product_events(events: &[AppEvent]) -> Vec<AppEvent> {
+        events
+            .iter()
+            .filter(|event| !matches!(event, AppEvent::RuntimeDiagnosticsReported { .. }))
+            .cloned()
+            .collect()
+    }
+
+    fn reported_diagnostics(events: &[AppEvent]) -> Vec<RuntimeDiagnostic> {
+        events
+            .iter()
+            .flat_map(|event| match event {
+                AppEvent::RuntimeDiagnosticsReported { diagnostics } => diagnostics.clone(),
+                _ => Vec::new(),
+            })
+            .collect()
+    }
+
     fn open_visible_preview(preview: &mut WindowsPreviewLoop, path: &Path) {
         assert!(
-            preview
-                .observe_probe_outputs(
-                    0,
-                    &explorer_frontmost_json(),
-                    Some(&hovered_item_json(path, "exact-item-under-pointer")),
-                    Some(&coordinate_json(320.0, 180.0)),
-                )
-                .expect("probe outputs should classify")
-                .is_empty()
+            product_events(
+                &preview
+                    .observe_probe_outputs(
+                        0,
+                        &explorer_frontmost_json(),
+                        Some(&hovered_item_json(path, "exact-item-under-pointer")),
+                        Some(&coordinate_json(320.0, 180.0)),
+                    )
+                    .expect("probe outputs should classify"),
+            )
+            .is_empty()
         );
 
         let opened = preview
@@ -463,7 +803,7 @@ mod tests {
             .expect("probe outputs should classify");
 
         assert!(matches!(
-            opened.as_slice(),
+            product_events(&opened).as_slice(),
             [AppEvent::PreviewWindowRequested { .. }]
         ));
         assert!(preview.state().visibility.visible);
@@ -503,15 +843,17 @@ mod tests {
         let mut preview = WindowsPreviewLoop::new();
 
         assert!(
-            preview
-                .observe_probe_outputs(
-                    0,
-                    &explorer_frontmost_json(),
-                    Some(&hovered_item_json(&path, "exact-item-under-pointer")),
-                    Some(&coordinate_json(320.0, 180.0)),
-                )
-                .expect("probe outputs should classify")
-                .is_empty()
+            product_events(
+                &preview
+                    .observe_probe_outputs(
+                        0,
+                        &explorer_frontmost_json(),
+                        Some(&hovered_item_json(&path, "exact-item-under-pointer")),
+                        Some(&coordinate_json(320.0, 180.0)),
+                    )
+                    .expect("probe outputs should classify"),
+            )
+            .is_empty()
         );
 
         let events = preview
@@ -523,8 +865,9 @@ mod tests {
             )
             .expect("probe outputs should classify");
 
-        assert_eq!(events.len(), 1);
-        match &events[0] {
+        let product_events = product_events(&events);
+        assert_eq!(product_events.len(), 1);
+        match &product_events[0] {
             AppEvent::PreviewWindowRequested { request } => {
                 assert_eq!(request.document.display_name, "notes.md");
                 assert_eq!(request.requested_width_px, 560);
@@ -534,6 +877,50 @@ mod tests {
             other => panic!("unexpected event: {other:?}"),
         }
         assert!(preview.state().visibility.visible);
+    }
+
+    #[test]
+    fn emits_runtime_diagnostics_for_frontmost_hover_monitor_and_preview_placement() {
+        let fixture = TempFixture::new();
+        let path = fixture.write_file("notes.md", "# hello");
+        let mut preview = WindowsPreviewLoop::new();
+
+        preview
+            .observe_probe_outputs(
+                0,
+                &explorer_frontmost_json(),
+                Some(&hovered_item_json(&path, "exact-item-under-pointer")),
+                Some(&coordinate_json(320.0, 180.0)),
+            )
+            .expect("probe outputs should classify");
+
+        let events = preview
+            .observe_probe_outputs(
+                1_000,
+                &explorer_frontmost_json(),
+                Some(&hovered_item_json(&path, "exact-item-under-pointer")),
+                Some(&coordinate_json(320.0, 180.0)),
+            )
+            .expect("probe outputs should classify");
+
+        let diagnostics = reported_diagnostics(&events);
+        let categories: Vec<_> = diagnostics
+            .iter()
+            .map(|diagnostic| diagnostic.category)
+            .collect();
+
+        assert!(categories.contains(&RuntimeDiagnosticCategory::FrontmostGating));
+        assert!(categories.contains(&RuntimeDiagnosticCategory::HoveredItemResolution));
+        assert!(categories.contains(&RuntimeDiagnosticCategory::MonitorSelection));
+        assert!(categories.contains(&RuntimeDiagnosticCategory::PreviewPlacement));
+        assert!(diagnostics.iter().any(|diagnostic| {
+            diagnostic.category == RuntimeDiagnosticCategory::PreviewPlacement
+                && diagnostic
+                    .details
+                    .get("requested_width_px")
+                    .map(|value| value.as_str())
+                    == Some("560")
+        }));
     }
 
     #[test]
@@ -551,7 +938,7 @@ mod tests {
             )
             .expect("probe outputs should classify");
 
-        assert!(events.is_empty());
+        assert!(product_events(&events).is_empty());
         assert!(!preview.state().visibility.visible);
     }
 
@@ -587,7 +974,7 @@ mod tests {
             )
             .expect("probe outputs should classify");
 
-        assert!(repeated.is_empty());
+        assert!(product_events(&repeated).is_empty());
         assert_eq!(
             preview
                 .state()
@@ -623,15 +1010,17 @@ mod tests {
             .expect("probe outputs should classify");
 
         assert!(
-            preview
-                .observe_probe_outputs(
-                    1_500,
-                    &explorer_frontmost_json(),
-                    Some(&hovered_item_json(&second, "exact-item-under-pointer")),
-                    Some(&coordinate_json(420.0, 220.0)),
-                )
-                .expect("probe outputs should classify")
-                .is_empty()
+            product_events(
+                &preview
+                    .observe_probe_outputs(
+                        1_500,
+                        &explorer_frontmost_json(),
+                        Some(&hovered_item_json(&second, "exact-item-under-pointer")),
+                        Some(&coordinate_json(420.0, 220.0)),
+                    )
+                    .expect("probe outputs should classify"),
+            )
+            .is_empty()
         );
 
         let replacement = preview
@@ -643,8 +1032,9 @@ mod tests {
             )
             .expect("probe outputs should classify");
 
-        assert_eq!(replacement.len(), 1);
-        match &replacement[0] {
+        let product_events = product_events(&replacement);
+        assert_eq!(product_events.len(), 1);
+        match &product_events[0] {
             AppEvent::PreviewWindowRequested { request } => {
                 assert_eq!(request.document.display_name, "b.md");
             }
@@ -684,7 +1074,7 @@ mod tests {
             )
             .expect("probe outputs should classify");
 
-        assert!(unchanged.is_empty());
+        assert!(product_events(&unchanged).is_empty());
         assert!(preview.state().visibility.visible);
         assert_eq!(preview.state().last_close_reason, None);
     }
@@ -717,7 +1107,7 @@ mod tests {
             .expect("frontmost probe should classify");
 
         assert_eq!(
-            hidden,
+            product_events(&hidden),
             vec![AppEvent::PreviewWindowHidden {
                 reason: CloseReason::AppSwitch,
             }]
@@ -863,10 +1253,7 @@ mod tests {
         assert_eq!(editor.original_source, "line 4\nline 5");
         assert_eq!(editor.editable_source, "line 4\nline 5");
         assert_eq!(editor.source_line_label, "Editing source lines 4-5");
-        assert_eq!(
-            preview.state().editing.phase,
-            EditingPhase::Active
-        );
+        assert_eq!(preview.state().editing.phase, EditingPhase::Active);
     }
 
     #[test]
@@ -889,11 +1276,13 @@ mod tests {
             replacement_markdown,
             "line 1\nline 2\nline 3\nupdated\nblock\nline 6\nline 7\nline 8\nline 9\nline 10"
         );
-        match save_events.as_slice() {
-            [AppEvent::MarkdownSaveRequested {
-                document,
-                replacement_markdown: emitted_markdown,
-            }] => {
+        match product_events(&save_events).as_slice() {
+            [
+                AppEvent::MarkdownSaveRequested {
+                    document,
+                    replacement_markdown: emitted_markdown,
+                },
+            ] => {
                 assert_eq!(document.display_name, "notes.md");
                 assert_eq!(emitted_markdown, &replacement_markdown);
             }
@@ -906,7 +1295,7 @@ mod tests {
         );
 
         let failed = preview.complete_save(false, None, Some("disk full".to_string()));
-        match failed.as_slice() {
+        match product_events(&failed).as_slice() {
             [AppEvent::EditSessionChanged { editing }] => {
                 assert_eq!(editing.phase, EditingPhase::Active);
                 assert_eq!(
@@ -925,7 +1314,7 @@ mod tests {
         assert_eq!(editor.editable_source, "updated\nblock");
 
         let canceled = preview.cancel_edit_session();
-        match canceled.as_slice() {
+        match product_events(&canceled).as_slice() {
             [AppEvent::EditSessionChanged { editing }] => {
                 assert_eq!(editing.phase, EditingPhase::Inactive);
                 assert_eq!(editing.draft_markdown, None);
@@ -933,6 +1322,38 @@ mod tests {
             }
             other => panic!("unexpected cancel events: {other:?}"),
         }
+    }
+
+    #[test]
+    fn emits_runtime_diagnostics_for_the_windows_edit_lifecycle() {
+        let fixture = TempFixture::new();
+        let path = fixture.write_file("notes.md", edit_markdown());
+        let mut preview = WindowsPreviewLoop::new();
+        let blocks = edit_block_mappings();
+
+        open_visible_preview(&mut preview, &path);
+
+        let edit_events =
+            preview.dispatch_command(AppCommand::RequestEdit { target_line: 4 }, &blocks);
+        assert!(reported_diagnostics(&edit_events).iter().any(|diagnostic| {
+            diagnostic.category == RuntimeDiagnosticCategory::EditLifecycle
+                && diagnostic.summary.contains("entered inline edit mode")
+        }));
+
+        let (_, save_events) = preview
+            .save_current_edit(edit_markdown(), "updated block", &blocks)
+            .expect("save request should be emitted");
+        assert!(reported_diagnostics(&save_events).iter().any(|diagnostic| {
+            diagnostic.category == RuntimeDiagnosticCategory::EditLifecycle
+                && diagnostic.summary.contains("requested a Markdown save")
+        }));
+
+        let failed = preview.complete_save(false, None, Some("disk full".to_string()));
+        assert!(reported_diagnostics(&failed).iter().any(|diagnostic| {
+            diagnostic.category == RuntimeDiagnosticCategory::EditLifecycle
+                && diagnostic.level == fastmd_contracts::RuntimeDiagnosticLevel::Error
+                && diagnostic.summary.contains("failed save")
+        }));
     }
 
     #[test]
@@ -949,43 +1370,42 @@ mod tests {
             .expect("inline editor should open");
 
         assert!(
-            preview.dispatch_command(AppCommand::OutsideClick, &[]).is_empty()
+            product_events(&preview.dispatch_command(AppCommand::OutsideClick, &[])).is_empty()
         );
-        assert!(preview.dispatch_command(AppCommand::Escape, &[]).is_empty());
+        assert!(product_events(&preview.dispatch_command(AppCommand::Escape, &[])).is_empty());
         assert!(
-            preview
-                .observe_probe_outputs(
-                    4_000,
-                    &non_explorer_frontmost_json(),
-                    None,
-                    None,
-                )
-                .expect("frontmost probe should classify")
-                .is_empty()
+            product_events(
+                &preview
+                    .observe_probe_outputs(4_000, &non_explorer_frontmost_json(), None, None,)
+                    .expect("frontmost probe should classify"),
+            )
+            .is_empty()
         );
         assert!(
-            preview
-                .observe_probe_outputs(
-                    4_000,
-                    &explorer_frontmost_json(),
-                    Some(&hovered_item_json(&other, "exact-item-under-pointer")),
-                    Some(&coordinate_json(420.0, 220.0)),
-                )
-                .expect("probe outputs should classify")
-                .is_empty()
+            product_events(
+                &preview
+                    .observe_probe_outputs(
+                        4_000,
+                        &explorer_frontmost_json(),
+                        Some(&hovered_item_json(&other, "exact-item-under-pointer")),
+                        Some(&coordinate_json(420.0, 220.0)),
+                    )
+                    .expect("probe outputs should classify"),
+            )
+            .is_empty()
         );
 
         let (persisted_markdown, _) = preview
             .save_current_edit(edit_markdown(), "updated block", &blocks)
             .expect("save request should be emitted");
         assert!(
-            preview.dispatch_command(AppCommand::OutsideClick, &[]).is_empty()
+            product_events(&preview.dispatch_command(AppCommand::OutsideClick, &[])).is_empty()
         );
-        assert!(preview.dispatch_command(AppCommand::Escape, &[]).is_empty());
+        assert!(product_events(&preview.dispatch_command(AppCommand::Escape, &[])).is_empty());
 
         preview.complete_save(true, Some(persisted_markdown), None);
         assert_eq!(
-            preview.dispatch_command(AppCommand::Escape, &[]),
+            product_events(&preview.dispatch_command(AppCommand::Escape, &[])),
             vec![AppEvent::PreviewWindowHidden {
                 reason: CloseReason::Escape,
             }]
@@ -1027,14 +1447,15 @@ mod tests {
             &[],
         );
 
+        let product_events = product_events(&events);
         assert_eq!(
-            events[0],
+            product_events[0],
             AppEvent::WidthTierChanged {
                 selected_width_tier_index: 1,
                 requested_width_px: 960,
             }
         );
-        match &events[1] {
+        match &product_events[1] {
             AppEvent::PreviewWindowRequested { request } => {
                 assert_eq!(request.selected_width_tier_index, 1);
                 assert_eq!(request.requested_width_px, 960);
@@ -1081,14 +1502,15 @@ mod tests {
             &[],
         );
 
+        let product_events = product_events(&events);
         assert_eq!(
-            events[0],
+            product_events[0],
             AppEvent::WidthTierChanged {
                 selected_width_tier_index: 3,
                 requested_width_px: 1_920,
             }
         );
-        match &events[1] {
+        match &product_events[1] {
             AppEvent::PreviewWindowRequested { request } => {
                 assert_eq!(request.selected_width_tier_index, 3);
                 assert_eq!(request.requested_width_px, 1_920);

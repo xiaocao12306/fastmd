@@ -55,7 +55,10 @@ mod tests {
 
     #[test]
     fn display_server_labels_cover_wayland_x11_and_unknown() {
-        assert_eq!(display_server_label(Some(DisplayServerKind::Wayland)), "wayland");
+        assert_eq!(
+            display_server_label(Some(DisplayServerKind::Wayland)),
+            "wayland"
+        );
         assert_eq!(display_server_label(Some(DisplayServerKind::X11)), "x11");
         assert_eq!(display_server_label(None), "unknown");
     }

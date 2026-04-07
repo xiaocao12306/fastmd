@@ -1,5 +1,5 @@
 use fastmd_contracts::{
-    BackgroundMode, EditingState, RenderingReference, MACOS_REFERENCE_BEHAVIOR,
+    BackgroundMode, EditingState, RenderingReference, RuntimeDiagnostic, MACOS_REFERENCE_BEHAVIOR,
 };
 use serde::{Deserialize, Serialize};
 
@@ -128,12 +128,19 @@ pub struct InlineEditorModel {
     pub cancel_label: String,
 }
 
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PreviewDiagnosticsModel {
+    pub diagnostics: Vec<RuntimeDiagnostic>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PreviewModel {
     pub document: PreviewDocumentModel,
     pub chrome: PreviewChromeModel,
     pub block_mappings: Vec<BlockMapping>,
     pub inline_editor: Option<InlineEditorModel>,
+    #[serde(default)]
+    pub diagnostics: PreviewDiagnosticsModel,
 }
 
 pub fn preview_aspect_ratio() -> f64 {
@@ -430,6 +437,7 @@ pub fn preview_model(
         chrome: preview_chrome_model(selected_width_tier_index, background_mode),
         block_mappings,
         inline_editor,
+        diagnostics: PreviewDiagnosticsModel::default(),
     }
 }
 
@@ -567,6 +575,25 @@ mod tests {
 
         let encoded = serde_json::to_string(&model).expect("serialize");
         let decoded: PreviewModel = serde_json::from_str(&encoded).expect("deserialize");
+        assert_eq!(model, decoded);
+        assert!(decoded.diagnostics.diagnostics.is_empty());
+    }
+
+    #[test]
+    fn preview_diagnostics_model_round_trips_structured_runtime_diagnostics() {
+        let model = PreviewDiagnosticsModel {
+            diagnostics: vec![RuntimeDiagnostic::new(
+                fastmd_contracts::PlatformId::WindowsExplorer,
+                fastmd_contracts::RuntimeDiagnosticLevel::Info,
+                fastmd_contracts::RuntimeDiagnosticCategory::MonitorSelection,
+                "Windows monitor selection classified the pointer into shared desktop space",
+            )
+            .at_ms(1_500)
+            .with_detail("selected_monitor_id", "primary")],
+        };
+
+        let encoded = serde_json::to_string(&model).expect("serialize");
+        let decoded: PreviewDiagnosticsModel = serde_json::from_str(&encoded).expect("deserialize");
         assert_eq!(model, decoded);
     }
 

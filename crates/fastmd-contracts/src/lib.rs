@@ -931,6 +931,62 @@ impl EditingState {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum RuntimeDiagnosticLevel {
+    Info,
+    Warning,
+    Error,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum RuntimeDiagnosticCategory {
+    FrontmostGating,
+    HoveredItemResolution,
+    MonitorSelection,
+    PreviewPlacement,
+    EditLifecycle,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RuntimeDiagnostic {
+    pub platform: PlatformId,
+    pub level: RuntimeDiagnosticLevel,
+    pub category: RuntimeDiagnosticCategory,
+    pub at_ms: Option<u64>,
+    pub summary: String,
+    pub details: BTreeMap<String, String>,
+}
+
+impl RuntimeDiagnostic {
+    pub fn new(
+        platform: PlatformId,
+        level: RuntimeDiagnosticLevel,
+        category: RuntimeDiagnosticCategory,
+        summary: impl Into<String>,
+    ) -> Self {
+        Self {
+            platform,
+            level,
+            category,
+            at_ms: None,
+            summary: summary.into(),
+            details: BTreeMap::new(),
+        }
+    }
+
+    pub fn at_ms(mut self, at_ms: u64) -> Self {
+        self.at_ms = Some(at_ms);
+        self
+    }
+
+    pub fn with_detail(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
+        self.details.insert(key.into(), value.into());
+        self
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PreviewState {
     pub current_document: Option<ResolvedDocument>,
@@ -1018,6 +1074,9 @@ pub enum AppCommand {
         message: Option<String>,
     },
     CancelEdit,
+    ReportRuntimeDiagnostics {
+        diagnostics: Vec<RuntimeDiagnostic>,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -1048,6 +1107,9 @@ pub enum AppEvent {
     MarkdownSaveRequested {
         document: ResolvedDocument,
         replacement_markdown: String,
+    },
+    RuntimeDiagnosticsReported {
+        diagnostics: Vec<RuntimeDiagnostic>,
     },
 }
 
@@ -1463,6 +1525,15 @@ mod tests {
             background_mode: BackgroundMode::Black,
             interaction_hot: true,
         };
+        let diagnostic = RuntimeDiagnostic::new(
+            PlatformId::WindowsExplorer,
+            RuntimeDiagnosticLevel::Info,
+            RuntimeDiagnosticCategory::PreviewPlacement,
+            "Windows preview placement requested a shared-core frame",
+        )
+        .at_ms(1_500)
+        .with_detail("monitor_id", "primary")
+        .with_detail("requested_width_px", "960");
         let command = AppCommand::ObserveHover {
             at_ms: 1_500,
             front_surface: sample_front_surface(),
@@ -1482,6 +1553,12 @@ mod tests {
         };
         let close_event = AppEvent::PreviewWindowHidden {
             reason: CloseReason::Escape,
+        };
+        let diagnostics_command = AppCommand::ReportRuntimeDiagnostics {
+            diagnostics: vec![diagnostic.clone()],
+        };
+        let diagnostics_event = AppEvent::RuntimeDiagnosticsReported {
+            diagnostics: vec![diagnostic],
         };
         let error = HostError::new(
             HostErrorCode::HoverResolutionFailed,
@@ -1520,6 +1597,8 @@ mod tests {
         assert_roundtrip(&event);
         assert_roundtrip(&width_event);
         assert_roundtrip(&close_event);
+        assert_roundtrip(&diagnostics_command);
+        assert_roundtrip(&diagnostics_event);
         assert_roundtrip(&error);
     }
 

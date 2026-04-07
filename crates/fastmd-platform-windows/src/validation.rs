@@ -32,7 +32,7 @@ pub struct AdapterValidationManifest {
     pub features: &'static [AdapterValidationFeature],
 }
 
-pub static WINDOWS_VALIDATION_FEATURES: [AdapterValidationFeature; 27] = [
+pub static WINDOWS_VALIDATION_FEATURES: [AdapterValidationFeature; 28] = [
     AdapterValidationFeature {
         blueprint_item: "Restrict Windows support target to Windows 11 plus Explorer only",
         status: FeatureStatus::ImplementedInThisCrate,
@@ -165,8 +165,13 @@ pub static WINDOWS_VALIDATION_FEATURES: [AdapterValidationFeature; 27] = [
     },
     AdapterValidationFeature {
         blueprint_item: "Implement the same runtime diagnostics coverage as macOS where host APIs permit",
-        status: FeatureStatus::PendingAdapterWork,
-        evidence: "Diagnostics seam exists but host-backed emission is not implemented.",
+        status: FeatureStatus::ImplementedInThisCrate,
+        evidence: "Shared contracts now define structured RuntimeDiagnostic entries, fastmd_core routes them through AppCommand::ReportRuntimeDiagnostics/AppEvent::RuntimeDiagnosticsReported, fastmd_render exposes a diagnostics DTO for the desktop shell, and WindowsPreviewLoop emits macOS-parity runtime diagnostics without inventing a Windows-only side channel.",
+    },
+    AdapterValidationFeature {
+        blueprint_item: "Emit Windows-side diagnostics for frontmost gating, hovered-item resolution, monitor selection, preview placement, and edit lifecycle",
+        status: FeatureStatus::ImplementedInThisCrate,
+        evidence: "WindowsPreviewLoop now emits structured diagnostics for accepted/rejected Explorer frontmost gating, hovered-item classifier outcomes, translated monitor selection, shared-core preview placement requests, and inline edit lifecycle transitions, and crate-owned tests assert the required categories appear in probe-driven runs.",
     },
 ];
 
@@ -180,7 +185,7 @@ pub fn windows_validation_manifest() -> AdapterValidationManifest {
 
 #[cfg(test)]
 mod tests {
-    use super::{windows_validation_manifest, FeatureStatus};
+    use super::{FeatureStatus, windows_validation_manifest};
 
     #[test]
     fn validation_manifest_stays_explicit_about_target_and_reference() {
@@ -191,7 +196,7 @@ mod tests {
     }
 
     #[test]
-    fn validation_manifest_separates_direct_shared_and_pending_windows_features() {
+    fn validation_manifest_separates_direct_and_shared_windows_features() {
         let manifest = windows_validation_manifest();
 
         let implemented_in_crate = manifest
@@ -212,22 +217,40 @@ mod tests {
             .filter(|feature| feature.status.is_complete())
             .count();
 
-        assert_eq!(implemented_in_crate, 14);
+        assert_eq!(implemented_in_crate, 16);
         assert_eq!(implemented_via_shared, 12);
-        assert_eq!(completed, 26);
+        assert_eq!(completed, 28);
         assert!(
             manifest
                 .features
                 .iter()
                 .any(|feature| {
-                    feature.status == FeatureStatus::PendingAdapterWork
+                    feature.status == FeatureStatus::ImplementedInThisCrate
                         && feature.blueprint_item
                             == "Implement the same runtime diagnostics coverage as macOS where host APIs permit"
                 })
         );
-        assert!(manifest
-            .features
-            .iter()
-            .all(|feature| feature.status != FeatureStatus::PendingSharedCore));
+        assert!(
+            manifest
+                .features
+                .iter()
+                .any(|feature| {
+                    feature.status == FeatureStatus::ImplementedInThisCrate
+                        && feature.blueprint_item
+                            == "Emit Windows-side diagnostics for frontmost gating, hovered-item resolution, monitor selection, preview placement, and edit lifecycle"
+                })
+        );
+        assert!(
+            manifest
+                .features
+                .iter()
+                .all(|feature| feature.status != FeatureStatus::PendingAdapterWork)
+        );
+        assert!(
+            manifest
+                .features
+                .iter()
+                .all(|feature| feature.status != FeatureStatus::PendingSharedCore)
+        );
     }
 }
