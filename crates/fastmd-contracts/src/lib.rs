@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 use std::path::Path;
 
@@ -181,6 +181,18 @@ impl DocumentPath {
 impl From<&str> for DocumentPath {
     fn from(value: &str) -> Self {
         Self::new(value)
+    }
+}
+
+impl From<String> for DocumentPath {
+    fn from(value: String) -> Self {
+        Self::new(value)
+    }
+}
+
+impl From<DocumentPath> for String {
+    fn from(value: DocumentPath) -> Self {
+        value.0
     }
 }
 
@@ -422,11 +434,34 @@ pub struct HintChipReference {
     pub paging_icon: &'static str,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HintChipContract {
+    pub width_label: String,
+    pub background_label: String,
+    pub paging_label: String,
+    pub background_icon: String,
+    pub paging_icon: String,
+}
+
 impl HintChipReference {
     pub fn width_label(self, selected_width_tier_index: usize, total_tiers: usize) -> String {
         self.width_label_template
             .replace("{current}", &(selected_width_tier_index + 1).to_string())
             .replace("{total}", &total_tiers.to_string())
+    }
+
+    pub fn contract(
+        self,
+        selected_width_tier_index: usize,
+        total_tiers: usize,
+    ) -> HintChipContract {
+        HintChipContract {
+            width_label: self.width_label(selected_width_tier_index, total_tiers),
+            background_label: self.background_label.to_string(),
+            paging_label: self.paging_label.to_string(),
+            background_icon: self.background_icon.to_string(),
+            paging_icon: self.paging_icon.to_string(),
+        }
     }
 }
 
@@ -657,6 +692,16 @@ pub static MACOS_PREVIEW_FEATURE_LIST: [MacOsPreviewFeature; 20] = [
     MacOsPreviewFeature::RuntimeDiagnosticsCoverage,
 ];
 
+pub fn shared_hint_chip_contract(selected_width_tier_index: usize) -> HintChipContract {
+    MACOS_REFERENCE_BEHAVIOR.hint_chip.contract(
+        selected_width_tier_index,
+        MACOS_REFERENCE_BEHAVIOR
+            .preview_geometry
+            .width_tiers_px
+            .len(),
+    )
+}
+
 pub fn macos_preview_feature_list() -> &'static [MacOsPreviewFeature] {
     &MACOS_PREVIEW_FEATURE_LIST
 }
@@ -686,9 +731,7 @@ pub fn preview_feature_gaps_against_reference(
         .collect()
 }
 
-pub fn preview_feature_coverage_matches_reference(
-    feature_sets: &[&[MacOsPreviewFeature]],
-) -> bool {
+pub fn preview_feature_coverage_matches_reference(feature_sets: &[&[MacOsPreviewFeature]]) -> bool {
     preview_feature_gaps_against_reference(feature_sets).is_empty()
 }
 
@@ -1182,6 +1225,12 @@ impl Default for PreviewState {
     }
 }
 
+impl PreviewState {
+    pub fn hint_chip_contract(&self) -> HintChipContract {
+        shared_hint_chip_contract(self.selected_width_tier_index)
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "kebab-case")]
 pub enum AppCommand {
@@ -1582,6 +1631,34 @@ mod tests {
     }
 
     #[test]
+    fn shared_hint_chip_contract_round_trips_the_macos_reference_copy() {
+        let contract = shared_hint_chip_contract(1);
+
+        assert_eq!(
+            contract,
+            HintChipContract {
+                width_label: "← 2/4 →".to_string(),
+                background_label: "Tab".to_string(),
+                paging_label: "(⇧+) Space".to_string(),
+                background_icon: "◐".to_string(),
+                paging_icon: "⇵".to_string(),
+            }
+        );
+        assert_roundtrip(&contract);
+    }
+
+    #[test]
+    fn preview_state_exposes_hint_chip_contract_from_selected_width_tier() {
+        let state = PreviewState {
+            selected_width_tier_index: 2,
+            ..PreviewState::default()
+        };
+
+        assert_eq!(state.hint_chip_contract(), shared_hint_chip_contract(2));
+        assert_eq!(state.hint_chip_contract().width_label, "← 3/4 →");
+    }
+
+    #[test]
     fn hover_resolution_scope_contract_rejects_nearby_fallbacks() {
         let reference = MACOS_REFERENCE_BEHAVIOR.hover_resolution;
 
@@ -1692,7 +1769,9 @@ mod tests {
             MacOsPreviewFeature::HoverOpensAfterOneSecond,
             MacOsPreviewFeature::WidthTierModel,
         ]]));
-        assert!(preview_feature_coverage_matches_reference(&[macos_preview_feature_list()]));
+        assert!(preview_feature_coverage_matches_reference(&[
+            macos_preview_feature_list()
+        ]));
     }
 
     #[test]

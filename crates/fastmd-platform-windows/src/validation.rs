@@ -101,7 +101,7 @@ pub static WINDOWS_VALIDATION_FEATURES: [AdapterValidationFeature; 29] = [
     AdapterValidationFeature {
         blueprint_item: "Implement the same compact hint-chip behavior as macOS",
         status: FeatureStatus::ImplementedViaSharedContractsCoreRender,
-        evidence: "fastmd-render locks the single-chip copy to MACOS_REFERENCE_BEHAVIOR, and crate-owned tests validate that the shared frontend template keeps the same compact width / Tab / paging chip for Windows without diverging labels.",
+        evidence: "fastmd-contracts now owns the shared hint-chip DTO and width-label generation, fastmd_core exposes that contract directly from preview state, and crate-owned tests validate that the shared frontend template keeps the same compact width / Tab / paging chip for Windows without diverging labels.",
     },
     AdapterValidationFeature {
         blueprint_item: "Keep the Windows preview chrome free of Windows-only helper text that would diverge from macOS",

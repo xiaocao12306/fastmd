@@ -459,7 +459,7 @@ Checklist reset rule:
 - [x] Encode the 4:3 preview aspect-ratio rule in the shared core
 - [x] Encode the “reposition before shrinking when the selected tier still fits” rule in the shared core
 - [x] Encode the pure white / pure black background toggle rule in the shared core
-- [ ] Encode the compact top-right hint-chip contract in the shared core
+- [x] Encode the compact top-right hint-chip contract in the shared core
 - [x] Encode the hot interaction-surface rule in the shared core
 - [x] Encode mouse-wheel and touchpad scrolling semantics in the shared core
 - [x] Encode `Space`, `Shift+Space`, `Page Up`, and `Page Down` paging semantics in the shared core
@@ -470,7 +470,7 @@ Checklist reset rule:
 - [x] Encode edit-mode lock semantics in the shared core
 - [x] Encode “double-click smallest source block to edit” semantics in the shared core
 - [x] Encode save and cancel edit semantics in the shared core
-- [ ] Add unit tests for all core semantic rules above
+- [x] Add unit tests for all core semantic rules above
 
 ### Layer 3 — Shared Rendering And Editing Contract
 

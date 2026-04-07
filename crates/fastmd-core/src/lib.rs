@@ -1,7 +1,7 @@
 use std::cmp::Ordering;
 
 use fastmd_contracts::{
-    AppCommand, AppEvent, CloseReason, EditingPhase, FrontSurface, HoveredItem,
+    AppCommand, AppEvent, CloseReason, EditingPhase, FrontSurface, HintChipContract, HoveredItem,
     MacOsPreviewFeature, MonitorMetadata, PageInput, PagingMotion, PreviewState,
     PreviewWindowRequest, ResolvedDocument, RuntimeDiagnostic, ScreenPoint, ScreenRect,
     MACOS_REFERENCE_BEHAVIOR,
@@ -459,6 +459,7 @@ pub fn shared_core_preview_feature_coverage() -> &'static [MacOsPreviewFeature] 
         MacOsPreviewFeature::SameDocumentPointerMotionKeepsPreview,
         MacOsPreviewFeature::WidthTierModel,
         MacOsPreviewFeature::PreviewPlacementRepositionBeforeShrink,
+        MacOsPreviewFeature::CompactHintChipChrome,
         MacOsPreviewFeature::HotInteractionSurface,
         MacOsPreviewFeature::BackgroundToggleTab,
         MacOsPreviewFeature::ScrollWheelAndTouchpad,
@@ -466,6 +467,10 @@ pub fn shared_core_preview_feature_coverage() -> &'static [MacOsPreviewFeature] 
         MacOsPreviewFeature::EditSaveCancelAndLock,
         MacOsPreviewFeature::ClosePolicyOutsideClickAppSwitchEscape,
     ]
+}
+
+pub fn shared_core_hint_chip_contract(state: &PreviewState) -> HintChipContract {
+    state.hint_chip_contract()
 }
 
 fn compare_monitors_for_anchor(
@@ -560,9 +565,9 @@ pub fn preview_frame_for_anchor(
 mod tests {
     use super::*;
     use fastmd_contracts::{
-        AppCommand, BackgroundMode, DocumentKind, DocumentOrigin, DocumentPath, EditingPhase,
-        FrontSurfaceIdentity, FrontSurfaceKind, MacOsPreviewFeature, PageDirection, PlatformId,
-        preview_feature_gaps_against_reference,
+        preview_feature_gaps_against_reference, AppCommand, BackgroundMode, DocumentKind,
+        DocumentOrigin, DocumentPath, EditingPhase, FrontSurfaceIdentity, FrontSurfaceKind,
+        MacOsPreviewFeature, PageDirection, PlatformId,
     };
     use fastmd_render::BlockKind;
     use std::collections::BTreeSet;
@@ -775,10 +780,11 @@ mod tests {
             .copied()
             .collect();
 
-        assert_eq!(features.len(), 13);
+        assert_eq!(features.len(), 14);
         assert!(features.contains(&MacOsPreviewFeature::FrontmostFileManagerGating));
         assert!(features.contains(&MacOsPreviewFeature::HoverOpensAfterOneSecond));
         assert!(features.contains(&MacOsPreviewFeature::WidthTierModel));
+        assert!(features.contains(&MacOsPreviewFeature::CompactHintChipChrome));
         assert!(features.contains(&MacOsPreviewFeature::EditSaveCancelAndLock));
         assert!(features.contains(&MacOsPreviewFeature::ClosePolicyOutsideClickAppSwitchEscape));
     }
@@ -793,7 +799,6 @@ mod tests {
             MacOsPreviewFeature::ExactHoveredMarkdownResolution,
             MacOsPreviewFeature::AcceptedLocalMarkdownFilesOnly,
             MacOsPreviewFeature::MonitorSelectionAndCoordinateTranslation,
-            MacOsPreviewFeature::CompactHintChipChrome,
             MacOsPreviewFeature::InlineBlockEditEntryAndSourceMapping,
             MacOsPreviewFeature::MarkdownRenderingSurface,
             MacOsPreviewFeature::RuntimeDiagnosticsCoverage,
@@ -1003,11 +1008,9 @@ mod tests {
             scale_factor: 1.0,
             is_primary: true,
         };
-        let selected = select_monitor_for_anchor(
-            &[right.clone(), left.clone()],
-            &ScreenPoint::new(-240.0, 640.0),
-        )
-        .expect("left monitor should contain the anchor");
+        let monitors = [right.clone(), left.clone()];
+        let selected = select_monitor_for_anchor(&monitors, &ScreenPoint::new(-240.0, 640.0))
+            .expect("left monitor should contain the anchor");
 
         assert_eq!(selected.id, left.id);
     }
@@ -1080,6 +1083,54 @@ mod tests {
             vec![AppEvent::BackgroundModeChanged {
                 background_mode: BackgroundMode::Black,
             }]
+        );
+    }
+
+    #[test]
+    fn shared_core_hint_chip_contract_tracks_selected_width_tier_and_macos_copy() {
+        let mut engine = CoreEngine::new();
+
+        assert_eq!(
+            shared_core_hint_chip_contract(engine.state()).width_label,
+            "← 1/4 →"
+        );
+        assert_eq!(
+            shared_core_hint_chip_contract(engine.state()).background_label,
+            "Tab"
+        );
+        assert_eq!(
+            shared_core_hint_chip_contract(engine.state()).paging_label,
+            "(⇧+) Space"
+        );
+
+        engine.observe_hover(
+            0,
+            finder_surface(true, "finder-window-1"),
+            Some(hovered_markdown("/Users/example/Docs/a.md", 180.0, 780.0)),
+            Some(monitor()),
+        );
+        engine.observe_hover(
+            1_000,
+            finder_surface(true, "finder-window-1"),
+            Some(hovered_markdown("/Users/example/Docs/a.md", 180.0, 780.0)),
+            None,
+        );
+        engine.set_interaction_hot(true);
+        let width_events = engine.adjust_width_tier(2, None);
+
+        assert!(matches!(
+            width_events.as_slice(),
+            [
+                AppEvent::WidthTierChanged {
+                    selected_width_tier_index: 2,
+                    requested_width_px: 1_440,
+                },
+                AppEvent::PreviewWindowRequested { .. }
+            ]
+        ));
+        assert_eq!(
+            shared_core_hint_chip_contract(engine.state()).width_label,
+            "← 3/4 →"
         );
     }
 

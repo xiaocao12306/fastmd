@@ -539,7 +539,7 @@ fn frontmost_runtime_diagnostic(
             .with_detail(
                 "process_id",
                 identity
-                    .process_id
+                    .owner_process_id
                     .map(|value| value.to_string())
                     .unwrap_or_else(|| "none".to_string()),
             );
@@ -1534,7 +1534,7 @@ mod tests {
     #[test]
     fn windows_preview_loop_feature_coverage_matches_the_macos_reference_feature_list() {
         let expected: BTreeSet<_> = macos_preview_feature_list().iter().copied().collect();
-        let actual: BTreeSet<_> = windows_preview_loop_feature_coverage()
+        let actual: BTreeSet<_> = super::windows_preview_loop_feature_coverage()
             .into_iter()
             .collect();
 

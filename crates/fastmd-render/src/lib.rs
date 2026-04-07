@@ -1,6 +1,6 @@
 use fastmd_contracts::{
-    BackgroundMode, EditingState, MacOsPreviewFeature, RenderingReference, RuntimeDiagnostic,
-    MACOS_REFERENCE_BEHAVIOR,
+    shared_hint_chip_contract, BackgroundMode, EditingState, HintChipContract, MacOsPreviewFeature,
+    RenderingReference, RuntimeDiagnostic, MACOS_REFERENCE_BEHAVIOR,
 };
 use serde::{Deserialize, Serialize};
 
@@ -55,15 +55,6 @@ impl BlockMapping {
     pub fn span_len(&self) -> u32 {
         self.end_line.saturating_sub(self.start_line)
     }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct HintChipContract {
-    pub width_label: String,
-    pub background_label: String,
-    pub paging_label: String,
-    pub background_icon: String,
-    pub paging_icon: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -163,30 +154,11 @@ pub fn width_px_for_index(index: usize) -> u32 {
 }
 
 pub fn width_label(selected_width_tier_index: usize) -> String {
-    let clamped = clamped_width_tier_index(selected_width_tier_index as isize);
-    MACOS_REFERENCE_BEHAVIOR.hint_chip.width_label(
-        clamped,
-        MACOS_REFERENCE_BEHAVIOR
-            .preview_geometry
-            .width_tiers_px
-            .len(),
-    )
+    shared_hint_chip_contract(selected_width_tier_index).width_label
 }
 
 pub fn hint_chip_contract(selected_width_tier_index: usize) -> HintChipContract {
-    HintChipContract {
-        width_label: width_label(selected_width_tier_index),
-        background_label: MACOS_REFERENCE_BEHAVIOR
-            .hint_chip
-            .background_label
-            .to_string(),
-        paging_label: MACOS_REFERENCE_BEHAVIOR.hint_chip.paging_label.to_string(),
-        background_icon: MACOS_REFERENCE_BEHAVIOR
-            .hint_chip
-            .background_icon
-            .to_string(),
-        paging_icon: MACOS_REFERENCE_BEHAVIOR.hint_chip.paging_icon.to_string(),
-    }
+    shared_hint_chip_contract(selected_width_tier_index)
 }
 
 pub fn macos_rendering_reference() -> &'static RenderingReference {
@@ -462,7 +434,7 @@ pub fn find_smallest_matching_block(blocks: &[BlockMapping], line: u32) -> Optio
 mod tests {
     use super::*;
     use fastmd_contracts::{
-        EditingPhase, EditingState, MacOsPreviewFeature, preview_feature_gaps_against_reference,
+        preview_feature_gaps_against_reference, EditingPhase, EditingState, MacOsPreviewFeature,
     };
     use std::collections::BTreeSet;
     use std::fs;
@@ -645,7 +617,8 @@ mod tests {
 
     #[test]
     fn shared_render_preview_feature_coverage_stays_inside_render_owned_boundary() {
-        let gaps = preview_feature_gaps_against_reference(&[shared_render_preview_feature_coverage()]);
+        let gaps =
+            preview_feature_gaps_against_reference(&[shared_render_preview_feature_coverage()]);
 
         assert!(gaps.contains(&MacOsPreviewFeature::FrontmostFileManagerGating));
         assert!(gaps.contains(&MacOsPreviewFeature::HoverOpensAfterOneSecond));

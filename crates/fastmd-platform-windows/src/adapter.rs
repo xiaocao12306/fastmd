@@ -3,8 +3,8 @@ use std::fmt;
 #[cfg(target_os = "windows")]
 use crate::coordinates::probe_monitor_layout_snapshot;
 use crate::coordinates::{
-    CoordinateProbeError, WindowsCoordinateTranslation, classify_monitor_layout,
-    parse_monitor_layout_snapshot,
+    classify_monitor_layout, parse_monitor_layout_snapshot, CoordinateProbeError,
+    WindowsCoordinateTranslation,
 };
 use crate::filter::{
     AcceptedMarkdownPath, HoverCandidate, HoverCandidateRejection, WindowsMarkdownFilter,
@@ -12,21 +12,21 @@ use crate::filter::{
 #[cfg(target_os = "windows")]
 use crate::frontmost::probe_frontmost_window_snapshot;
 use crate::frontmost::{
-    FrontmostProbeError, FrontmostSurfaceRejection, FrontmostWindowSnapshot,
-    WINDOWS_FRONTMOST_API_STACK, WindowsFrontmostApiStack, parse_frontmost_window_snapshot,
-    resolve_frontmost_surface,
+    parse_frontmost_window_snapshot, resolve_frontmost_surface, FrontmostProbeError,
+    FrontmostSurfaceRejection, FrontmostWindowSnapshot, WindowsFrontmostApiStack,
+    WINDOWS_FRONTMOST_API_STACK,
 };
 #[cfg(target_os = "windows")]
 use crate::hover::probe_hovered_item_snapshot;
 use crate::hover::{
-    HoverProbeError, HoveredExplorerItemSnapshot, HoveredItemProbeOutcome,
-    classify_hovered_item_snapshot, parse_hovered_item_snapshot,
+    classify_hovered_item_snapshot, parse_hovered_item_snapshot, HoverProbeError,
+    HoveredExplorerItemSnapshot, HoveredItemProbeOutcome,
 };
 use crate::parity::{
-    MACOS_REFERENCE_BEHAVIOR, MacOsReferenceBehavior, WINDOWS_EXPLORER_STAGE2_TARGET,
-    WindowsExplorerStage2Target,
+    MacOsReferenceBehavior, WindowsExplorerStage2Target, MACOS_REFERENCE_BEHAVIOR,
+    WINDOWS_EXPLORER_STAGE2_TARGET,
 };
-use crate::validation::{AdapterValidationManifest, windows_validation_manifest};
+use crate::validation::{windows_validation_manifest, AdapterValidationManifest};
 use fastmd_contracts::{FrontSurface, RuntimeDiagnostic, ScreenPoint};
 
 /// Windows host API seams that still need real Explorer-backed implementations.
@@ -403,6 +403,7 @@ mod tests {
                 };
                 assert_eq!(state, expected);
             }
+            other => panic!("unexpected frontmost error: {other:?}"),
         }
 
         let hover_error = adapter
