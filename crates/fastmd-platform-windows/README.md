@@ -29,6 +29,7 @@ This worker slice keeps the lane buildable and extends the Windows hover-open pr
 - Windows preview-loop command dispatch now routes shared `AppCommand::AdjustWidthTier` requests back through the same macOS-parity core geometry rules
 - probe-driven tests now cover 560 / 960 / 1440 / 1920 width tiers plus 4:3 reposition-before-shrink behavior on roomy and cramped Windows work areas
 - probe-driven tests now cover 1-second hover open, non-Explorer gating, same-item stationary no-reopen, replacement only after a different resolved Markdown target, and same-document pointer motion without dismissal
+- shared render-side validation now pins `ui/src/markdown.ts`, `ui/src/styles.css`, and `ui/src/app.ts` to the same macOS-parity Markdown runtime, styling, block mapping, and content-base wiring that Windows consumes through the shared preview shell
 
 The macOS behavior reference for this lane currently lives in:
 
@@ -50,14 +51,15 @@ The macOS behavior reference for this lane currently lives in:
 - enumerates Windows monitor bounds and work areas and translates them into the shared desktop-space model FastMD core already uses
 - prefers the monitor whose translated visible frame contains the pointer and otherwise falls back to the nearest visible frame
 - routes Windows width-tier commands through the shared Stage 2 command contract so preview requests keep the same 560 / 960 / 1440 / 1920 tiers and 4:3 reposition-before-shrink policy as macOS
+- reuses the shared preview shell Markdown surface, with crate-owned tests locking the shared MarkdownIt, KaTeX, Mermaid, block-wrapper, typography, theme, and content-base behavior back to `apps/macos`
 - records which Layer 6 parity items remain pending versus implemented in this crate
 
 ## What remains pending
 
 The remaining Windows host work is still pending and should only be claimed once it matches macOS behavior one-to-one:
 
-- post-open interaction parity for background toggling, paging, editing, outside-click close, and Escape close
 - runtime diagnostics parity
+- full end-to-end preview-loop validation against the macOS feature list
 - validation evidence on a real Windows 11 machine
 
 ## Validation

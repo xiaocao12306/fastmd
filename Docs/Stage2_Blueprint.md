@@ -585,7 +585,7 @@ Checklist reset rule:
 - [x] Implement the same close-on-outside-click behavior as macOS
 - [x] Implement the same close-on-app-switch behavior as macOS
 - [x] Implement the same close-on-Escape behavior as macOS
-- [ ] Implement the same Markdown rendering surface as macOS
+- [x] Implement the same Markdown rendering surface as macOS
 - [ ] Implement the same runtime diagnostics coverage as macOS where host APIs permit
 - [ ] Emit Windows-side diagnostics for frontmost gating, hovered-item resolution, monitor selection, preview placement, and edit lifecycle
 - [ ] Validate the full Windows preview loop end-to-end against the macOS feature list

@@ -1,4 +1,6 @@
-use fastmd_contracts::{BackgroundMode, EditingState, RenderingReference, MACOS_REFERENCE_BEHAVIOR};
+use fastmd_contracts::{
+    BackgroundMode, EditingState, RenderingReference, MACOS_REFERENCE_BEHAVIOR,
+};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -556,10 +558,10 @@ mod tests {
         );
         assert_eq!(model.chrome.background_mode, BackgroundMode::Black);
         assert_eq!(
-            model
-                .inline_editor
-                .as_ref()
-                .map(|editor| (editor.source_line_label.as_str(), editor.editable_source.as_str())),
+            model.inline_editor.as_ref().map(|editor| (
+                editor.source_line_label.as_str(),
+                editor.editable_source.as_str()
+            )),
             Some(("Editing source lines 4-5", "line 4\nline 5"))
         );
 
@@ -664,6 +666,135 @@ mod tests {
     }
 
     #[test]
+    fn shared_frontend_markdown_runtime_matches_macos_rendering_reference() {
+        let source = fs::read_to_string(shared_frontend_markdown_path())
+            .expect("ui markdown.ts should be readable");
+        let rendering = macos_rendering_reference();
+
+        assert!(source.contains("new MarkdownIt({"));
+        if rendering.runtime.html_enabled {
+            assert!(source.contains("html: true"));
+        }
+        if rendering.runtime.linkify {
+            assert!(source.contains("linkify: true"));
+        }
+        if rendering.runtime.typographer {
+            assert!(source.contains("typographer: true"));
+        }
+        if rendering.runtime.syntax_highlight_uses_highlight_js {
+            assert!(source.contains("hljs.highlight(source, { language }).value;"));
+        }
+        if rendering.runtime.syntax_highlight_falls_back_to_auto_detect {
+            assert!(source.contains("hljs.highlightAuto(source).value;"));
+        }
+        if rendering.runtime.supports_footnotes {
+            assert!(source.contains("instance.use(markdownItFootnote);"));
+        }
+        if rendering.runtime.supports_task_lists {
+            assert!(source.contains("instance.use(markdownItTaskLists"));
+            assert!(source.contains("enabled: true"));
+            assert!(source.contains("label: true"));
+            assert!(source.contains("labelAfter: true"));
+        }
+        if rendering.runtime.supports_mermaid {
+            assert!(source.contains(&format!(
+                "if (info === \"{}\")",
+                rendering.runtime.mermaid_fence_info_string
+            )));
+            assert!(source.contains("class=\"mermaid\""));
+            assert!(source.contains("mermaid.initialize({"));
+            assert!(source.contains(&format!(
+                "securityLevel: \"{}\"",
+                rendering.runtime.mermaid_security_level
+            )));
+        }
+        if rendering.runtime.supports_math {
+            assert!(source.contains("renderMathInElement(root, {"));
+            for delimiter in rendering.runtime.math_delimiters {
+                let left = typescript_string_literal(delimiter.left);
+                let right = typescript_string_literal(delimiter.right);
+                assert!(source.contains(&format!(
+                    "{{ left: \"{left}\", right: \"{right}\", display: {} }}",
+                    delimiter.display
+                )));
+            }
+        }
+        if rendering.runtime.html_blocks_passthrough {
+            assert!(source.contains("wrapSelfClosingBlocks(instance, \"html_block\""));
+        }
+        if rendering.runtime.wraps_top_level_blocks_with_source_mapping {
+            assert!(source.contains("assignBlockMetadata(tokens as any[]);"));
+            assert!(source.contains("class=\"md-block\""));
+            assert!(source.contains("data-block-id"));
+            assert!(source.contains("data-start-line"));
+            assert!(source.contains("data-end-line"));
+        }
+        assert!(source.contains("syncContentBase(root.ownerDocument, contentBaseUrl);"));
+    }
+
+    #[test]
+    fn shared_frontend_styles_match_macos_rendering_surface_reference() {
+        let source = fs::read_to_string(shared_frontend_styles_path())
+            .expect("ui styles.css should be readable");
+        let rendering = macos_rendering_reference();
+
+        assert!(source.contains(rendering.typography.ui_font_family));
+        assert!(source.contains(rendering.typography.body_font_family));
+        assert!(source.contains(rendering.typography.code_font_family));
+        assert!(source.contains(&format!(
+            "font-size: {}px;",
+            rendering.typography.base_font_size_px
+        )));
+        assert!(source.contains(rendering.theme.white_page_bg));
+        assert!(source.contains(rendering.theme.black_page_bg));
+        assert!(source.contains(rendering.theme.white_text));
+        assert!(source.contains(rendering.theme.black_text));
+        assert!(source.contains(rendering.theme.white_code_bg));
+        assert!(source.contains(rendering.theme.black_code_bg));
+        assert!(source.contains(rendering.theme.white_editor_bg));
+        assert!(source.contains(rendering.theme.black_editor_bg));
+        assert!(source.contains(&format!(
+            "padding: {}px;",
+            rendering.layout.render_root_padding_px
+        )));
+        assert!(source.contains(&format!(
+            "padding: {}px {}px {}px;",
+            rendering.layout.toolbar_padding_top_px,
+            rendering.layout.toolbar_padding_horizontal_px,
+            rendering.layout.toolbar_padding_bottom_px
+        )));
+        assert!(source.contains(&format!(
+            "width: {}%;",
+            rendering.layout.inline_editor_width_percent
+        )));
+        assert!(source.contains(".mermaid"));
+        assert!(source.contains(".footnotes"));
+        assert!(source.contains(".inline-editor"));
+        assert!(source.contains("li.task-list-item"));
+        assert!(source.contains("blockquote {"));
+        assert!(source.contains("table {"));
+        assert!(source.contains("img,"));
+        assert!(source.contains("video {"));
+        for size in rendering.typography.heading_sizes_px {
+            assert!(source.contains(&format!("font-size: {size}px;")));
+        }
+    }
+
+    #[test]
+    fn shared_frontend_shell_routes_shell_state_through_shared_markdown_renderer() {
+        let source =
+            fs::read_to_string(shared_frontend_app_path()).expect("ui app.ts should be readable");
+
+        assert!(source.contains("await renderMarkdownDocument("));
+        assert!(source.contains("this.renderRoot,"));
+        assert!(source.contains("this.shellState.markdown,"));
+        assert!(source.contains("this.shellState.backgroundMode,"));
+        assert!(source.contains("this.shellState.contentBaseUrl ?? null,"));
+        assert!(source.contains("target.closest(\".md-block\")"));
+        assert!(source.contains("replacePreviewMarkdown(this.pendingMarkdown)"));
+    }
+
+    #[test]
     fn rich_preview_fixture_covers_the_runtime_features_claimed_by_shared_render_contract() {
         let fixture = fs::read_to_string(rich_preview_fixture_path())
             .expect("rich-preview fixture should be readable");
@@ -701,7 +832,10 @@ mod tests {
             phase: EditingPhase::Active,
             target_start_line: Some(3),
             target_end_line: Some(5),
-            draft_markdown: Some("line 1\nline 2\nline 3\nupdated\nblock\nline 6\nline 7\nline 8\nline 9\nline 10".to_string()),
+            draft_markdown: Some(
+                "line 1\nline 2\nline 3\nupdated\nblock\nline 6\nline 7\nline 8\nline 9\nline 10"
+                    .to_string(),
+            ),
             draft_source: Some("updated\nblock".to_string()),
         };
 
@@ -716,8 +850,9 @@ mod tests {
             Some("line 1\nline 2\nline 3\nupdated\nblock\nline 6\nline 7\nline 8\nline 9\nline 10")
         );
 
-        let model = build_inline_editor_model_for_editing_state(sample_markdown(), &blocks, &editing)
-            .expect("inline editor model");
+        let model =
+            build_inline_editor_model_for_editing_state(sample_markdown(), &blocks, &editing)
+                .expect("inline editor model");
         assert_eq!(model.original_source, "line 4\nline 5");
         assert_eq!(model.editable_source, "updated\nblock");
         assert_eq!(model.source_line_label, "Editing source lines 4-5");
@@ -732,8 +867,20 @@ mod tests {
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../ui/src/app.ts")
     }
 
+    fn shared_frontend_markdown_path() -> PathBuf {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../ui/src/markdown.ts")
+    }
+
+    fn shared_frontend_styles_path() -> PathBuf {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../ui/src/styles.css")
+    }
+
     fn rich_preview_fixture_path() -> PathBuf {
         PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("../../Tests/Fixtures/Markdown/rich-preview.md")
+    }
+
+    fn typescript_string_literal(value: &str) -> String {
+        value.replace('\\', "\\\\").replace('"', "\\\"")
     }
 }

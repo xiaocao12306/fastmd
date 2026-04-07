@@ -33,14 +33,15 @@ This validation file is crate-local evidence only. It does not claim full Window
 - probe-driven preview-loop tests now cover the 1-second hover open debounce, blocked open while a non-Explorer surface is frontmost, stationary same-item no-reopen, replacement only after a different resolved Markdown target, and same-document pointer motion without dismissal
 - `WindowsPreviewLoop::dispatch_command` now routes shared Stage 2 commands into `fastmd_core`, so Windows width-tier changes reuse the same shared macOS-parity semantics instead of a crate-local fork
 - probe-driven preview-loop tests now prove that Windows width-tier changes emit the same 560 / 960 / 1440 / 1920 requests as macOS, preserve 4:3 aspect ratio, reposition before shrinking on roomy work areas, and only shrink once the requested tier truly cannot fit the selected work area
+- shared render-side validation now pins `ui/src/markdown.ts`, `ui/src/styles.css`, and `ui/src/app.ts` to the same macOS Markdown runtime, styling, block-wrapper, and content-base wiring that the Windows preview shell consumes
 - unit tests added for hover API-stack metadata, probe-output parsing, exact-vs-fallback evidence classification, adapter wiring, relative-path rejection, and stable-surface classification behavior
 - unit tests added for coordinate API-stack metadata, Windows-to-shared desktop-space translation, containing-monitor selection, and nearest-work-area fallback
 - unit tests added for frontmost-surface preservation when Explorer gating fails, shared-contract Windows surface round-trips, and shared-core Explorer hover-open semantics
 
 ## Still pending
 
-- post-open interaction parity wiring for background toggling, paging, editing, outside-click close, and Escape close; the shared edit-lock and close-policy rules are validated in `fastmd-core`, but Windows-specific end-to-end wiring and validation evidence are still pending
 - runtime diagnostics parity
+- full end-to-end Windows preview-loop validation against the macOS feature list
 - validation evidence on a real Windows 11 machine for frontmost gating, exact hovered-item resolution, and multi-monitor coordinate handling
 
 ## Verification commands
@@ -59,7 +60,6 @@ cargo test --manifest-path crates/fastmd-platform-windows/Cargo.toml
 
 ## Actual results in this worker clone
 
-- `rustup run stable-aarch64-apple-darwin cargo fmt --all`: passed
-- `rustup run stable-aarch64-apple-darwin cargo fmt --all --check`: passed
+- `rustup run stable-aarch64-apple-darwin rustfmt --check crates/fastmd-render/src/lib.rs crates/fastmd-platform-windows/src/validation.rs`: passed
 - `rustup run stable-aarch64-apple-darwin cargo metadata --format-version 1 --no-deps`: passed
-- `rustup run stable-aarch64-apple-darwin cargo test -p fastmd-contracts -p fastmd-core -p fastmd-platform-windows`: blocked before crate tests ran because the local Rosetta linker environment aborted inside `cc` with `Attachment of code signature supplement failed: 1` while compiling dependency build scripts
+- `rustup run stable-aarch64-apple-darwin cargo test -p fastmd-render --lib`: blocked before crate tests ran because the local Rosetta linker environment aborted inside `cc` with `Attachment of code signature supplement failed: 1` while compiling dependency build scripts

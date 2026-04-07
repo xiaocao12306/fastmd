@@ -32,7 +32,7 @@ pub struct AdapterValidationManifest {
     pub features: &'static [AdapterValidationFeature],
 }
 
-pub static WINDOWS_VALIDATION_FEATURES: [AdapterValidationFeature; 26] = [
+pub static WINDOWS_VALIDATION_FEATURES: [AdapterValidationFeature; 27] = [
     AdapterValidationFeature {
         blueprint_item: "Restrict Windows support target to Windows 11 plus Explorer only",
         status: FeatureStatus::ImplementedInThisCrate,
@@ -154,6 +154,11 @@ pub static WINDOWS_VALIDATION_FEATURES: [AdapterValidationFeature; 26] = [
         evidence: "WindowsPreviewLoop now validates that AppCommand::Escape hides an open preview with CloseReason::Escape through the shared close policy.",
     },
     AdapterValidationFeature {
+        blueprint_item: "Implement the same Markdown rendering surface as macOS",
+        status: FeatureStatus::ImplementedViaSharedContractsCoreRender,
+        evidence: "fastmd-render now pins ui/src/markdown.ts, ui/src/styles.css, and ui/src/app.ts to the macOS rendering runtime, typography, theme, layout, Mermaid, KaTeX, block-source mapping, and content-base wiring that the shared Windows preview shell consumes.",
+    },
+    AdapterValidationFeature {
         blueprint_item: "Implement the same inline block editing entry rule, edit source mapping behavior, edit save and cancel behavior, and edit-mode lock behavior as macOS",
         status: FeatureStatus::ImplementedInThisCrate,
         evidence: "WindowsPreviewLoop now opens edit sessions through the shared smallest-block selector, builds inline-editor DTOs from shared render block mappings, preserves the current textarea source across failed saves through the shared edit state, composes full-document save payloads with macOS-matching line-splice semantics, and proves crate-local lock behavior for hover replacement and close commands while edit mode is active or saving.",
@@ -175,7 +180,7 @@ pub fn windows_validation_manifest() -> AdapterValidationManifest {
 
 #[cfg(test)]
 mod tests {
-    use super::{FeatureStatus, windows_validation_manifest};
+    use super::{windows_validation_manifest, FeatureStatus};
 
     #[test]
     fn validation_manifest_stays_explicit_about_target_and_reference() {
@@ -208,8 +213,8 @@ mod tests {
             .count();
 
         assert_eq!(implemented_in_crate, 14);
-        assert_eq!(implemented_via_shared, 11);
-        assert_eq!(completed, 25);
+        assert_eq!(implemented_via_shared, 12);
+        assert_eq!(completed, 26);
         assert!(
             manifest
                 .features
@@ -220,11 +225,9 @@ mod tests {
                             == "Implement the same runtime diagnostics coverage as macOS where host APIs permit"
                 })
         );
-        assert!(
-            manifest
-                .features
-                .iter()
-                .all(|feature| feature.status != FeatureStatus::PendingSharedCore)
-        );
+        assert!(manifest
+            .features
+            .iter()
+            .all(|feature| feature.status != FeatureStatus::PendingSharedCore));
     }
 }
