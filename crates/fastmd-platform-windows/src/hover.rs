@@ -8,7 +8,7 @@ use std::{
 
 #[cfg(target_os = "windows")]
 use fastmd_contracts::{FrontSurface, ScreenPoint};
-use fastmd_contracts::{HoverResolutionScope, MACOS_REFERENCE_BEHAVIOR};
+use fastmd_contracts::{HoverResolutionScope, HoveredPresentationMode, MACOS_REFERENCE_BEHAVIOR};
 use serde::Deserialize;
 
 use crate::filter::{
@@ -23,6 +23,7 @@ pub enum WindowsHoverApi {
     ElementFromPoint,
     ControlViewWalker,
     CurrentName,
+    CurrentViewMode,
     IShellWindows,
     IWebBrowserAppHwnd,
     FolderParseName,
@@ -36,6 +37,7 @@ pub struct WindowsHoverApiStack {
     pub element_from_point: WindowsHoverApi,
     pub ancestor_walk: WindowsHoverApi,
     pub element_name: WindowsHoverApi,
+    pub explorer_view_mode: WindowsHoverApi,
     pub shell_windows_enumerator: WindowsHoverApi,
     pub explorer_hwnd_bridge: WindowsHoverApi,
     pub folder_parse_name: WindowsHoverApi,
@@ -46,11 +48,82 @@ pub static WINDOWS_HOVER_API_STACK: WindowsHoverApiStack = WindowsHoverApiStack 
     element_from_point: WindowsHoverApi::ElementFromPoint,
     ancestor_walk: WindowsHoverApi::ControlViewWalker,
     element_name: WindowsHoverApi::CurrentName,
+    explorer_view_mode: WindowsHoverApi::CurrentViewMode,
     shell_windows_enumerator: WindowsHoverApi::IShellWindows,
     explorer_hwnd_bridge: WindowsHoverApi::IWebBrowserAppHwnd,
     folder_parse_name: WindowsHoverApi::FolderParseName,
     folder_item_path: WindowsHoverApi::FolderItemPath,
 };
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum WindowsExplorerViewMode {
+    Icon,
+    SmallIcon,
+    List,
+    Details,
+    Thumbnail,
+    Tile,
+    Thumbstrip,
+    Content,
+    Unknown(i32),
+}
+
+impl WindowsExplorerViewMode {
+    pub const fn from_raw(raw: i32) -> Self {
+        match raw {
+            1 => Self::Icon,
+            2 => Self::SmallIcon,
+            3 => Self::List,
+            4 => Self::Details,
+            5 => Self::Thumbnail,
+            6 => Self::Tile,
+            7 => Self::Thumbstrip,
+            8 => Self::Content,
+            value => Self::Unknown(value),
+        }
+    }
+
+    pub const fn presentation_mode(self) -> HoveredPresentationMode {
+        match self {
+            Self::List | Self::Details => HoveredPresentationMode::List,
+            Self::Icon
+            | Self::SmallIcon
+            | Self::Thumbnail
+            | Self::Tile
+            | Self::Thumbstrip
+            | Self::Content
+            | Self::Unknown(_) => HoveredPresentationMode::NonList,
+        }
+    }
+
+    pub fn label(self) -> String {
+        match self {
+            Self::Icon => "icon".to_string(),
+            Self::SmallIcon => "small-icon".to_string(),
+            Self::List => "list".to_string(),
+            Self::Details => "details".to_string(),
+            Self::Thumbnail => "thumbnail".to_string(),
+            Self::Tile => "tile".to_string(),
+            Self::Thumbstrip => "thumbstrip".to_string(),
+            Self::Content => "content".to_string(),
+            Self::Unknown(value) => format!("unknown({value})"),
+        }
+    }
+
+    pub const fn code(self) -> i32 {
+        match self {
+            Self::Icon => 1,
+            Self::SmallIcon => 2,
+            Self::List => 3,
+            Self::Details => 4,
+            Self::Thumbnail => 5,
+            Self::Tile => 6,
+            Self::Thumbstrip => 7,
+            Self::Content => 8,
+            Self::Unknown(value) => value,
+        }
+    }
+}
 
 #[cfg(target_os = "windows")]
 const WINDOWS_HOVER_PROBE_TEMPLATE: &str = r#"
@@ -65,19 +138,23 @@ Add-Type -AssemblyName WindowsBase
 function New-HoverPayload {
     param(
         [string]$ResolutionScope,
+        [string]$PresentationMode,
         [string]$Backend,
         [string]$Path,
         [string]$UnsupportedDescription,
-        [string]$ElementName
+        [string]$ElementName,
+        [Nullable[int]]$ViewModeCode
     )
 
     [pscustomobject]@{
         resolution_scope = $ResolutionScope
+        presentation_mode = if ([string]::IsNullOrWhiteSpace($PresentationMode)) { 'list' } else { $PresentationMode }
         backend = $Backend
         path = if ([string]::IsNullOrWhiteSpace($Path)) { $null } else { $Path }
         unsupported_description = if ([string]::IsNullOrWhiteSpace($UnsupportedDescription)) { $null } else { $UnsupportedDescription }
         element_name = if ([string]::IsNullOrWhiteSpace($ElementName)) { $null } else { $ElementName }
         shell_window_id = if ([string]::IsNullOrWhiteSpace($ExpectedShellWindowId)) { $null } else { $ExpectedShellWindowId }
+        view_mode_code = $ViewModeCode
     } | ConvertTo-Json -Compress -Depth 4
 }
 
@@ -121,6 +198,39 @@ function Resolve-ExplorerListItem {
     return $null
 }
 
+function Get-ExplorerViewModeSnapshot {
+    param($ShellWindow)
+
+    $viewModeCode = $null
+
+    try {
+        $document = $ShellWindow.Document
+        if ($null -ne $document) {
+            $viewModeCode = [int]$document.CurrentViewMode
+        }
+    } catch {
+        $viewModeCode = $null
+    }
+
+    if ($null -eq $viewModeCode) {
+        return @{
+            presentation_mode = 'list'
+            view_mode_code = $null
+        }
+    }
+
+    $presentationMode = if ($viewModeCode -eq 3 -or $viewModeCode -eq 4) {
+        'list'
+    } else {
+        'non-list'
+    }
+
+    return @{
+        presentation_mode = $presentationMode
+        view_mode_code = $viewModeCode
+    }
+}
+
 $shellApplication = New-Object -ComObject Shell.Application
 $shellWindows = $shellApplication.Windows()
 $matchedShellWindow = $null
@@ -147,6 +257,8 @@ try {
         throw "ShellWindows did not contain the expected Explorer HWND $ExpectedShellWindowId."
     }
 
+    $viewModeSnapshot = Get-ExplorerViewModeSnapshot $matchedShellWindow
+
     try {
         $point = New-Object System.Windows.Point($CursorX, $CursorY)
         $element = [System.Windows.Automation.AutomationElement]::FromPoint($point)
@@ -157,8 +269,10 @@ try {
     if ($null -eq $element) {
         Write-Output (New-HoverPayload `
             -ResolutionScope 'exact-item-under-pointer' `
+            -PresentationMode $viewModeSnapshot.presentation_mode `
             -Backend 'uiautomation-element-from-point+shell-parse-name' `
-            -UnsupportedDescription 'UI Automation returned no element for the pointer location.')
+            -UnsupportedDescription 'UI Automation returned no element for the pointer location.' `
+            -ViewModeCode $viewModeSnapshot.view_mode_code)
         return
     }
 
@@ -173,9 +287,11 @@ try {
     if ($null -eq $resolved) {
         Write-Output (New-HoverPayload `
             -ResolutionScope 'exact-item-under-pointer' `
+            -PresentationMode $viewModeSnapshot.presentation_mode `
             -Backend 'uiautomation-element-from-point+shell-parse-name' `
             -UnsupportedDescription 'Pointer did not resolve to an Explorer list item or hovered-row descendant.' `
-            -ElementName $exactName)
+            -ElementName $exactName `
+            -ViewModeCode $viewModeSnapshot.view_mode_code)
         return
     }
 
@@ -186,8 +302,10 @@ try {
     if ([string]::IsNullOrWhiteSpace($elementName)) {
         Write-Output (New-HoverPayload `
             -ResolutionScope $resolutionScope `
+            -PresentationMode $viewModeSnapshot.presentation_mode `
             -Backend 'uiautomation-element-from-point+shell-parse-name' `
-            -UnsupportedDescription 'Explorer item resolved from the pointer did not expose a usable name.')
+            -UnsupportedDescription 'Explorer item resolved from the pointer did not expose a usable name.' `
+            -ViewModeCode $viewModeSnapshot.view_mode_code)
         return
     }
 
@@ -221,17 +339,21 @@ try {
     if ([string]::IsNullOrWhiteSpace($resolvedPath)) {
         Write-Output (New-HoverPayload `
             -ResolutionScope $resolutionScope `
+            -PresentationMode $viewModeSnapshot.presentation_mode `
             -Backend 'uiautomation-element-from-point+shell-parse-name' `
             -UnsupportedDescription 'Explorer item name could not be converted into an absolute filesystem path.' `
-            -ElementName $elementName)
+            -ElementName $elementName `
+            -ViewModeCode $viewModeSnapshot.view_mode_code)
         return
     }
 
     Write-Output (New-HoverPayload `
         -ResolutionScope $resolutionScope `
+        -PresentationMode $viewModeSnapshot.presentation_mode `
         -Backend 'uiautomation-element-from-point+shell-parse-name' `
         -Path $resolvedPath `
-        -ElementName $elementName)
+        -ElementName $elementName `
+        -ViewModeCode $viewModeSnapshot.view_mode_code)
 } finally {
     if ($null -ne $folderItem) {
         [void][System.Runtime.InteropServices.Marshal]::FinalReleaseComObject($folderItem)
@@ -303,14 +425,17 @@ impl std::error::Error for HoverProbeError {}
 pub struct HoveredExplorerItemSnapshot {
     pub candidate: HoverCandidate,
     pub resolution_scope: HoverResolutionScope,
+    pub presentation_mode: HoveredPresentationMode,
     pub backend: String,
     pub element_name: Option<String>,
     pub shell_window_id: Option<String>,
+    pub explorer_view_mode: Option<WindowsExplorerViewMode>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum HoveredItemResolutionRejection {
     InsufficientEvidence { scope: HoverResolutionScope },
+    UnsupportedPresentationMode { mode: HoveredPresentationMode },
     CandidateRejected { rejection: HoverCandidateRejection },
 }
 
@@ -320,6 +445,11 @@ impl fmt::Display for HoveredItemResolutionRejection {
             Self::InsufficientEvidence { scope } => write!(
                 f,
                 "hovered Explorer item used a non-parity resolution scope: {scope:?}"
+            ),
+            Self::UnsupportedPresentationMode { mode } => write!(
+                f,
+                "hovered Explorer item came from an unsupported presentation mode: {}",
+                mode.label()
             ),
             Self::CandidateRejected { rejection } => rejection.fmt(f),
         }
@@ -340,6 +470,8 @@ pub struct HoveredItemProbeOutcome {
 #[derive(Debug, Deserialize)]
 struct HoveredExplorerItemSnapshotPayload {
     resolution_scope: HoverResolutionScope,
+    #[serde(default)]
+    presentation_mode: HoveredPresentationMode,
     backend: String,
     #[serde(default)]
     path: Option<String>,
@@ -349,6 +481,8 @@ struct HoveredExplorerItemSnapshotPayload {
     element_name: Option<String>,
     #[serde(default)]
     shell_window_id: Option<String>,
+    #[serde(default)]
+    view_mode_code: Option<i32>,
 }
 
 pub fn parse_hovered_item_snapshot(
@@ -367,11 +501,13 @@ pub fn parse_hovered_item_snapshot(
 
     let HoveredExplorerItemSnapshotPayload {
         resolution_scope,
+        presentation_mode,
         backend,
         path,
         unsupported_description,
         element_name,
         shell_window_id,
+        view_mode_code,
     } = payload;
 
     let candidate = if let Some(path) = path.filter(|path| !path.trim().is_empty()) {
@@ -398,9 +534,11 @@ pub fn parse_hovered_item_snapshot(
     Ok(HoveredExplorerItemSnapshot {
         candidate,
         resolution_scope,
+        presentation_mode,
         backend,
         element_name: element_name.filter(|value| !value.trim().is_empty()),
         shell_window_id: shell_window_id.filter(|value| !value.trim().is_empty()),
+        explorer_view_mode: view_mode_code.map(WindowsExplorerViewMode::from_raw),
     })
 }
 
@@ -409,6 +547,8 @@ pub fn classify_hovered_item_snapshot(
     filter: &WindowsMarkdownFilter,
 ) -> HoveredItemProbeOutcome {
     let resolution_scope = snapshot.resolution_scope;
+    let presentation_mode = snapshot.presentation_mode;
+    let non_list_presentation = presentation_mode == HoveredPresentationMode::NonList;
 
     if !MACOS_REFERENCE_BEHAVIOR
         .hover_resolution
@@ -425,20 +565,45 @@ pub fn classify_hovered_item_snapshot(
         };
     }
 
+    if !MACOS_REFERENCE_BEHAVIOR
+        .hover_resolution
+        .accepts_presentation_mode(presentation_mode)
+    {
+        return HoveredItemProbeOutcome {
+            snapshot,
+            accepted: None,
+            rejection: Some(
+                HoveredItemResolutionRejection::UnsupportedPresentationMode {
+                    mode: presentation_mode,
+                },
+            ),
+            api_stack: &WINDOWS_HOVER_API_STACK,
+            notes: "The Windows hover pipeline keeps Explorer presentation-mode support explicit, so any view mode that falls outside the macOS reference contract stays rejected until the shared hover contract is updated.",
+        };
+    }
+
     match filter.accept_candidate(snapshot.candidate.clone()) {
         Ok(accepted) => HoveredItemProbeOutcome {
             snapshot,
             accepted: Some(accepted),
             rejection: None,
             api_stack: &WINDOWS_HOVER_API_STACK,
-            notes: "The Windows hover pipeline accepts only exact-item or hovered-row evidence, then reuses the shared local-Markdown file filter before FastMD opens a preview.",
+            notes: if non_list_presentation {
+                "The Windows hover pipeline now mirrors the macOS Finder icon-anchor path in non-list Explorer modes by keeping the actual hovered item, classifying the live Explorer view mode, and then reusing the shared local-Markdown filter before preview open."
+            } else {
+                "The Windows hover pipeline accepts only exact-item or hovered-row evidence, then reuses the shared local-Markdown file filter before FastMD opens a preview."
+            },
         },
         Err(rejection) => HoveredItemProbeOutcome {
             snapshot,
             accepted: None,
             rejection: Some(HoveredItemResolutionRejection::CandidateRejected { rejection }),
             api_stack: &WINDOWS_HOVER_API_STACK,
-            notes: "The Windows hover pipeline keeps unsupported entities, stale paths, directories, and non-Markdown files out of FastMD before preview open.",
+            notes: if non_list_presentation {
+                "The Windows hover pipeline applies the same Markdown-path guardrails to non-list Explorer modes, keeping unsupported entities, stale paths, directories, and non-Markdown files out of FastMD before preview open."
+            } else {
+                "The Windows hover pipeline keeps unsupported entities, stale paths, directories, and non-Markdown files out of FastMD before preview open."
+            },
         },
     }
 }
@@ -541,13 +706,13 @@ fn powershell_single_quoted(value: &str) -> String {
 mod tests {
     use super::{
         HoverProbeError, HoveredExplorerItemSnapshot, HoveredItemResolutionRejection,
-        WINDOWS_HOVER_API_STACK, WindowsHoverApi, WindowsHoverApiStack,
+        WINDOWS_HOVER_API_STACK, WindowsExplorerViewMode, WindowsHoverApi, WindowsHoverApiStack,
         classify_hovered_item_snapshot, parse_hovered_item_snapshot,
     };
     use crate::filter::{
         HoverCandidate, HoverCandidateRejection, HoverCandidateSource, WindowsMarkdownFilter,
     };
-    use fastmd_contracts::HoverResolutionScope;
+    use fastmd_contracts::{HoverResolutionScope, HoveredPresentationMode};
     use std::fs;
     use std::path::{Path, PathBuf};
     use std::time::{SystemTime, UNIX_EPOCH};
@@ -595,6 +760,7 @@ mod tests {
         assert_eq!(stack.element_from_point, WindowsHoverApi::ElementFromPoint);
         assert_eq!(stack.ancestor_walk, WindowsHoverApi::ControlViewWalker);
         assert_eq!(stack.element_name, WindowsHoverApi::CurrentName);
+        assert_eq!(stack.explorer_view_mode, WindowsHoverApi::CurrentViewMode);
         assert_eq!(
             stack.shell_windows_enumerator,
             WindowsHoverApi::IShellWindows
@@ -612,10 +778,12 @@ mod tests {
         let snapshot = parse_hovered_item_snapshot(
             r#"{
                 "resolution_scope":"exact-item-under-pointer",
+                "presentation_mode":"list",
                 "backend":"uiautomation-element-from-point+shell-parse-name",
                 "path":"C:\\Users\\example\\Docs\\notes.md",
                 "element_name":"notes.md",
-                "shell_window_id":"hwnd:0x10001"
+                "shell_window_id":"hwnd:0x10001",
+                "view_mode_code":4
             }"#,
         )
         .expect("hover probe JSON should parse");
@@ -624,6 +792,7 @@ mod tests {
             snapshot.resolution_scope,
             HoverResolutionScope::ExactItemUnderPointer
         );
+        assert_eq!(snapshot.presentation_mode, HoveredPresentationMode::List);
         assert_eq!(
             snapshot.candidate,
             HoverCandidate::LocalPath {
@@ -633,6 +802,10 @@ mod tests {
         );
         assert_eq!(snapshot.element_name.as_deref(), Some("notes.md"));
         assert_eq!(snapshot.shell_window_id.as_deref(), Some("hwnd:0x10001"));
+        assert_eq!(
+            snapshot.explorer_view_mode,
+            Some(WindowsExplorerViewMode::Details)
+        );
     }
 
     #[test]
@@ -640,13 +813,20 @@ mod tests {
         let snapshot = parse_hovered_item_snapshot(
             r#"{
                 "resolution_scope":"exact-item-under-pointer",
+                "presentation_mode":"non-list",
                 "backend":"uiautomation-element-from-point+shell-parse-name",
                 "unsupported_description":"Pointer did not resolve to an Explorer list item.",
-                "element_name":"Address"
+                "element_name":"Address",
+                "view_mode_code":6
             }"#,
         )
         .expect("unsupported hover JSON should parse");
 
+        assert_eq!(snapshot.presentation_mode, HoveredPresentationMode::NonList);
+        assert_eq!(
+            snapshot.explorer_view_mode,
+            Some(WindowsExplorerViewMode::Tile)
+        );
         assert_eq!(
             snapshot.candidate,
             HoverCandidate::UnsupportedItem {
@@ -674,9 +854,11 @@ mod tests {
                 source: HoverCandidateSource::ExplorerShellItem,
             },
             resolution_scope: HoverResolutionScope::ExactItemUnderPointer,
+            presentation_mode: HoveredPresentationMode::List,
             backend: "test".to_string(),
             element_name: Some("notes.md".to_string()),
             shell_window_id: Some("hwnd:0x10001".to_string()),
+            explorer_view_mode: Some(WindowsExplorerViewMode::Details),
         });
 
         assert_eq!(
@@ -700,9 +882,11 @@ mod tests {
                 source: HoverCandidateSource::ExplorerShellItem,
             },
             resolution_scope: HoverResolutionScope::HoveredRowDescendant,
+            presentation_mode: HoveredPresentationMode::NonList,
             backend: "test".to_string(),
             element_name: Some("descendant.MD".to_string()),
             shell_window_id: Some("hwnd:0x10001".to_string()),
+            explorer_view_mode: Some(WindowsExplorerViewMode::Tile),
         });
 
         assert_eq!(
@@ -710,6 +894,14 @@ mod tests {
             Some(path.as_path())
         );
         assert!(outcome.rejection.is_none());
+        assert_eq!(
+            outcome.snapshot.presentation_mode,
+            HoveredPresentationMode::NonList
+        );
+        assert_eq!(
+            outcome.snapshot.explorer_view_mode,
+            Some(WindowsExplorerViewMode::Tile)
+        );
     }
 
     #[test]
@@ -727,9 +919,11 @@ mod tests {
                     source: HoverCandidateSource::ExplorerShellItem,
                 },
                 resolution_scope: scope,
+                presentation_mode: HoveredPresentationMode::List,
                 backend: "test".to_string(),
                 element_name: Some("nearby.md".to_string()),
                 shell_window_id: Some("hwnd:0x10001".to_string()),
+                explorer_view_mode: Some(WindowsExplorerViewMode::Details),
             });
 
             assert!(outcome.accepted.is_none());
@@ -748,9 +942,11 @@ mod tests {
                 source: HoverCandidateSource::ExplorerShellItem,
             },
             resolution_scope: HoverResolutionScope::ExactItemUnderPointer,
+            presentation_mode: HoveredPresentationMode::List,
             backend: "test".to_string(),
             element_name: Some("notes.md".to_string()),
             shell_window_id: Some("hwnd:0x10001".to_string()),
+            explorer_view_mode: Some(WindowsExplorerViewMode::Details),
         });
         assert_eq!(
             relative.rejection,
@@ -768,9 +964,11 @@ mod tests {
                 source: HoverCandidateSource::ExplorerUiAutomation,
             },
             resolution_scope: HoverResolutionScope::ExactItemUnderPointer,
+            presentation_mode: HoveredPresentationMode::NonList,
             backend: "test".to_string(),
             element_name: Some("Address".to_string()),
             shell_window_id: Some("hwnd:0x10001".to_string()),
+            explorer_view_mode: Some(WindowsExplorerViewMode::Tile),
         });
         assert_eq!(
             unsupported.rejection,

@@ -22,6 +22,7 @@ This worker slice keeps the lane buildable and extends the Windows hover-open pr
 - the authoritative Windows frontmost API stack is encoded explicitly
 - frontmost Explorer classification now requires a stable Explorer surface identity instead of a generic foreground-window check
 - a live Windows-only frontmost probe now captures foreground HWND, owner process image, window class, and ShellWindows HWND parity data before classification
+- the Windows hover probe now keeps Explorer `CurrentViewMode` in the adapter evidence lane so list vs non-list presentation modes stay explicit instead of implicit
 - Windows monitor enumeration now uses `Screen.AllScreens` plus `Screen.WorkingArea`
 - Windows cursor coordinates now normalize into the shared y-up desktop-space model before they reach shared core placement logic
 - containing monitor selection now prefers the visible work area under the pointer and falls back to the nearest visible work area only when the pointer is outside every work area
@@ -50,6 +51,7 @@ The macOS behavior reference for this lane currently lives in:
 - resolves a stable Explorer surface identity from the matched shell window handle plus owner process id
 - probes the live Windows frontmost surface and rejects non-Explorer foreground windows before FastMD treats the host as valid
 - accepts only existing local Markdown files as hover candidates
+- keeps non-list Explorer presentation modes in scope by resolving the actual hovered item and classifying the live Explorer view mode for diagnostics/evidence
 - rejects directories, missing paths, non-Markdown files, and unsupported non-file candidates
 - enumerates Windows monitor bounds and work areas and translates them into the shared desktop-space model FastMD core already uses
 - prefers the monitor whose translated visible frame contains the pointer and otherwise falls back to the nearest visible frame

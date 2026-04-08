@@ -45,8 +45,9 @@ pub use frontmost::{
 pub use hover::probe_hovered_item_snapshot;
 pub use hover::{
     HoverProbeError, HoveredExplorerItemSnapshot, HoveredItemProbeOutcome,
-    HoveredItemResolutionRejection, WINDOWS_HOVER_API_STACK, WindowsHoverApi, WindowsHoverApiStack,
-    classify_hovered_item_snapshot, parse_hovered_item_snapshot,
+    HoveredItemResolutionRejection, WINDOWS_HOVER_API_STACK, WindowsExplorerViewMode,
+    WindowsHoverApi, WindowsHoverApiStack, classify_hovered_item_snapshot,
+    parse_hovered_item_snapshot,
 };
 pub use parity::{
     BackgroundMode, BackgroundToggleKey, BackgroundToggleReference, ClosePolicyReference,

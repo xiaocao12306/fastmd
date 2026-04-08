@@ -22,6 +22,7 @@ This validation file is crate-local evidence only. It does not claim full Window
 - non-Explorer foreground windows now rejected by the same strict process/class/shell-identity classifier that the live probe feeds
 - authoritative Windows hovered-item API stack encoded as UI Automation `ElementFromPoint`, `ControlViewWalker`, `AutomationElement.Current.Name`, `IShellWindows`, `IWebBrowserApp::HWND`, `Folder.ParseName`, and `FolderItem.Path`
 - live Windows-only hovered-item probing wired through a PowerShell UI Automation hit-test plus Explorer shell-window path reconstruction
+- the live Windows hover probe now also records Explorer `CurrentViewMode`, classifies list vs non-list presentation modes in adapter diagnostics, and keeps non-list icon/tile/content captures explicit in the validation report
 - exact-item and hovered-row descendant evidence accepted; nearby or first-visible fallbacks explicitly rejected before preview open
 - crate-local local `.md` acceptance filtering now runs inside the Explorer hovered-item pipeline and rejects relative paths, missing paths, directories, unsupported entities, and non-Markdown extensions
 - authoritative Windows coordinate API stack encoded as `Cursor.Position`, `Screen.AllScreens`, `Screen.Bounds`, `Screen.WorkingArea`, and `SystemInformation.VirtualScreen`

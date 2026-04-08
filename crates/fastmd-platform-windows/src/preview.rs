@@ -494,10 +494,17 @@ fn hovered_item_description(hover: &HoveredItemProbeOutcome) -> String {
         .as_deref()
         .map(|name| format!(" ({name})"))
         .unwrap_or_default();
+    let presentation_mode = snapshot.presentation_mode.label();
+    let view_mode = snapshot
+        .explorer_view_mode
+        .map(|mode| format!(", {}", mode.label()))
+        .unwrap_or_default();
 
     format!(
-        "Windows Explorer {} via {}{}",
+        "Windows Explorer {} / {}{} via {}{}",
         hover_scope_label(snapshot.resolution_scope),
+        presentation_mode,
+        view_mode,
         snapshot.backend,
         element_name
     )
@@ -772,11 +779,21 @@ fn hover_runtime_diagnostic(at_ms: u64, hover: &HoveredItemProbeOutcome) -> Runt
         "resolution_scope",
         hover_scope_label(hover.snapshot.resolution_scope).to_string(),
     )
+    .with_detail(
+        "presentation_mode",
+        hover.snapshot.presentation_mode.label().to_string(),
+    )
     .with_detail("backend", hover.snapshot.backend.clone())
     .with_detail("notes", hover.notes.to_string());
 
     if let Some(element_name) = hover.snapshot.element_name.as_deref() {
         diagnostic = diagnostic.with_detail("element_name", element_name.to_string());
+    }
+    if let Some(view_mode) = hover.snapshot.explorer_view_mode {
+        diagnostic = diagnostic.with_detail(
+            "explorer_view_mode",
+            format!("{} ({})", view_mode.label(), view_mode.code()),
+        );
     }
     if let Some(path) = hover
         .accepted
@@ -907,12 +924,23 @@ mod tests {
     }
 
     fn hovered_item_json(path: &Path, scope: &str) -> String {
+        hovered_item_json_with_mode(path, scope, "list", 4)
+    }
+
+    fn hovered_item_json_with_mode(
+        path: &Path,
+        scope: &str,
+        presentation_mode: &str,
+        view_mode_code: i32,
+    ) -> String {
         json!({
             "resolution_scope": scope,
+            "presentation_mode": presentation_mode,
             "backend": "uiautomation-element-from-point+shell-parse-name",
             "path": path.display().to_string(),
             "element_name": path.file_name().and_then(|name| name.to_str()).unwrap_or("notes.md"),
-            "shell_window_id": "hwnd:0x10001"
+            "shell_window_id": "hwnd:0x10001",
+            "view_mode_code": view_mode_code
         })
         .to_string()
     }
@@ -1123,7 +1151,12 @@ mod tests {
             .observe_probe_outputs(
                 0,
                 &explorer_frontmost_json(),
-                Some(&hovered_item_json(&path, "exact-item-under-pointer")),
+                Some(&hovered_item_json_with_mode(
+                    &path,
+                    "exact-item-under-pointer",
+                    "non-list",
+                    6,
+                )),
                 Some(&coordinate_json(320.0, 180.0)),
             )
             .expect("probe outputs should classify");
@@ -1145,7 +1178,12 @@ mod tests {
             .observe_probe_outputs(
                 1_000,
                 &explorer_frontmost_json(),
-                Some(&hovered_item_json(&path, "exact-item-under-pointer")),
+                Some(&hovered_item_json_with_mode(
+                    &path,
+                    "exact-item-under-pointer",
+                    "non-list",
+                    6,
+                )),
                 Some(&coordinate_json(320.0, 180.0)),
             )
             .expect("probe outputs should classify");
@@ -1183,7 +1221,12 @@ mod tests {
             .observe_probe_outputs(
                 0,
                 &explorer_frontmost_json(),
-                Some(&hovered_item_json(&path, "exact-item-under-pointer")),
+                Some(&hovered_item_json_with_mode(
+                    &path,
+                    "exact-item-under-pointer",
+                    "non-list",
+                    6,
+                )),
                 Some(&coordinate_json(320.0, 180.0)),
             )
             .expect("probe outputs should classify");
@@ -1192,7 +1235,12 @@ mod tests {
             .observe_probe_outputs(
                 1_000,
                 &explorer_frontmost_json(),
-                Some(&hovered_item_json(&path, "exact-item-under-pointer")),
+                Some(&hovered_item_json_with_mode(
+                    &path,
+                    "exact-item-under-pointer",
+                    "non-list",
+                    6,
+                )),
                 Some(&coordinate_json(320.0, 180.0)),
             )
             .expect("probe outputs should classify");
@@ -1207,6 +1255,22 @@ mod tests {
         assert!(categories.contains(&RuntimeDiagnosticCategory::HoveredItemResolution));
         assert!(categories.contains(&RuntimeDiagnosticCategory::MonitorSelection));
         assert!(categories.contains(&RuntimeDiagnosticCategory::PreviewPlacement));
+        assert!(diagnostics.iter().any(|diagnostic| {
+            diagnostic.category == RuntimeDiagnosticCategory::HoveredItemResolution
+                && diagnostic
+                    .details
+                    .get("presentation_mode")
+                    .map(|value| value.as_str())
+                    == Some("non-list")
+        }));
+        assert!(diagnostics.iter().any(|diagnostic| {
+            diagnostic.category == RuntimeDiagnosticCategory::HoveredItemResolution
+                && diagnostic
+                    .details
+                    .get("explorer_view_mode")
+                    .map(|value| value.as_str())
+                    == Some("tile (6)")
+        }));
         assert!(diagnostics.iter().any(|diagnostic| {
             diagnostic.category == RuntimeDiagnosticCategory::PreviewPlacement
                 && diagnostic

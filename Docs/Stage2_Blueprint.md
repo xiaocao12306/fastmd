@@ -531,11 +531,13 @@ Checklist reset rule:
 - [x] Add explicit parity tests or validation evidence that macOS behavior did not regress
 - [x] Keep the Swift shell or Tauri-backed macOS shell behaviorally identical to the current app until a later blueprint change explicitly says otherwise
 - [ ] Optimize the macOS preview rendering pipeline so Markdown display feels pre-rendered and visually non-blocking
-- [ ] Support `.md` preview triggering in Finder non-list presentation modes instead of list-view-only behavior
+- [x] Support `.md` preview triggering in Finder non-list presentation modes instead of list-view-only behavior
 - [ ] Allow the macOS preview window to be dragged by its top chrome without breaking hover semantics
 - [x] Ensure Finder rename interactions never trigger preview opening or replacement
 
 _Worker 1 note (2026-04-09): the macOS reference app now routes both hover-open and Space-key preview triggers through the same Finder text-input snapshot, so rename fields, search fields, and path-bar editors suppress preview opening and replacement until text editing ends._
+
+_Worker 1 note (2026-04-09): the macOS reference `FinderItemResolver` already mirrors icon-view hover by treating `AXImage` / `AXStaticText` hits as a non-list anchor, shifting the BFS root to the parent group, and resolving sibling Markdown path or filename evidence instead of staying list-view-only._
 
 ### Layer 6 — One-To-One Windows 11 Explorer Parity
 
@@ -593,13 +595,15 @@ _Worker 1 note (2026-04-09): the macOS reference app now routes both hover-open 
 - [x] Implement the same close-on-Escape behavior as macOS
 - [x] Implement the same Markdown rendering surface as macOS
 - [x] Optimize the Windows preview rendering pipeline so Markdown display feels pre-rendered and visually non-blocking
-- [ ] Support `.md` preview triggering in non-list Explorer presentation modes instead of list-view-only behavior
+- [x] Support `.md` preview triggering in non-list Explorer presentation modes instead of list-view-only behavior
 - [ ] Allow the Windows preview window to be dragged by its top chrome without breaking hover semantics
 - [x] Ensure Explorer rename interactions never trigger preview opening or replacement
 - [x] Implement the same runtime diagnostics coverage as macOS where host APIs permit
 - [x] Emit Windows-side diagnostics for frontmost gating, hovered-item resolution, monitor selection, preview placement, and edit lifecycle
 - [x] Validate the full Windows preview loop end-to-end against the macOS feature list
 - [ ] Record Windows-specific validation evidence proving one-to-one parity with macOS for each feature above
+
+_Worker 1 note (2026-04-09): the Windows hover lane now keeps Explorer `CurrentViewMode` in the probe payload, classifies list vs non-list presentation modes explicitly, and continues resolving the actual hovered Markdown item from exact-item or hovered-row evidence before the shared Markdown filter runs. This closes the non-list implementation item only; the separate real Windows 11 evidence items remain open._
 
 ### Layer 7 — One-To-One Ubuntu 24.04 GNOME Files Parity
 

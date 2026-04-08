@@ -345,8 +345,20 @@ fn build_hover_section(
             "Resolution scope: `{}`",
             hover_scope_label(hover.snapshot.resolution_scope)
         ),
+        format!(
+            "Presentation mode: `{}`",
+            hover.snapshot.presentation_mode.label()
+        ),
         format!("Backend: `{}`", hover.snapshot.backend),
     ];
+
+    if let Some(view_mode) = hover.snapshot.explorer_view_mode {
+        details.push(format!(
+            "Explorer view mode: `{} ({})`",
+            view_mode.label(),
+            view_mode.code()
+        ));
+    }
 
     if let Some(element_name) = hover.snapshot.element_name.as_deref() {
         details.push(format!(
@@ -1070,9 +1082,11 @@ mod tests {
                 source: HoverCandidateSource::ValidationFixture,
             },
             resolution_scope: HoverResolutionScope::ExactItemUnderPointer,
+            presentation_mode: fastmd_contracts::HoveredPresentationMode::NonList,
             backend: "uiautomation-element-from-point+shell-parse-name".to_string(),
             element_name: Some("hovered.md".to_string()),
             shell_window_id: Some("hwnd:0x10001".to_string()),
+            explorer_view_mode: Some(crate::hover::WindowsExplorerViewMode::Tile),
         });
 
         build_windows_validation_evidence_report(
@@ -1168,9 +1182,11 @@ mod tests {
                 source: HoverCandidateSource::ValidationFixture,
             },
             resolution_scope: HoverResolutionScope::ExactItemUnderPointer,
+            presentation_mode: fastmd_contracts::HoveredPresentationMode::NonList,
             backend: "uiautomation-element-from-point+shell-parse-name".to_string(),
             element_name: Some("hovered.md".to_string()),
             shell_window_id: Some("hwnd:0x10001".to_string()),
+            explorer_view_mode: Some(crate::hover::WindowsExplorerViewMode::Tile),
         });
         let mut environment = sample_environment();
         environment.operating_system = "Windows 10 Pro".to_string();
@@ -1250,9 +1266,11 @@ mod tests {
                 source: HoverCandidateSource::ValidationFixture,
             },
             resolution_scope: HoverResolutionScope::ExactItemUnderPointer,
+            presentation_mode: fastmd_contracts::HoveredPresentationMode::NonList,
             backend: "uiautomation-element-from-point+shell-parse-name".to_string(),
             element_name: Some("hovered.md".to_string()),
             shell_window_id: Some("hwnd:0x10001".to_string()),
+            explorer_view_mode: Some(crate::hover::WindowsExplorerViewMode::Tile),
         });
 
         let report = build_windows_validation_evidence_report(
@@ -1335,6 +1353,8 @@ mod tests {
             "Reference feature `Preserve the macOS four-tier width model of 560 / 960 / 1440 / 1920`: automated lanes `shared-core`; automated status `covered`; parity readiness `ready`; real-host evidence `monitor-selection-and-coordinate-translation (pass)`"
         ));
         assert!(markdown.contains("Accepted Markdown path: `"));
+        assert!(markdown.contains("Presentation mode: `non-list`"));
+        assert!(markdown.contains("Explorer view mode: `tile (6)`"));
         assert!(markdown.contains("Selection mode: `containing visible frame`"));
         assert!(markdown.contains("Selected monitor matches shared-core placement rule: `true`"));
         assert!(markdown.contains("Shared-core expected monitor: `Primary monitor`"));

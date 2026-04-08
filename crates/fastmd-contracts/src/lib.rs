@@ -68,6 +68,23 @@ impl HoverResolutionScope {
     }
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum HoveredPresentationMode {
+    #[default]
+    List,
+    NonList,
+}
+
+impl HoveredPresentationMode {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::List => "list",
+            Self::NonList => "non-list",
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum BackgroundMode {
@@ -416,6 +433,7 @@ pub struct HoverResolutionReference {
     pub surface_kind: FrontSurfaceKind,
     pub requires_actual_hovered_item: bool,
     pub supports_hovered_row_descendant: bool,
+    pub supports_non_list_presentation_modes: bool,
     pub rejects_nearby_candidates: bool,
     pub rejects_first_visible_fallbacks: bool,
     pub direct_path_attribute_names: [&'static str; 4],
@@ -1276,6 +1294,7 @@ pub static MACOS_REFERENCE_BEHAVIOR: MacOsReferenceBehavior = MacOsReferenceBeha
         surface_kind: FrontSurfaceKind::FinderListView,
         requires_actual_hovered_item: true,
         supports_hovered_row_descendant: true,
+        supports_non_list_presentation_modes: true,
         rejects_nearby_candidates: true,
         rejects_first_visible_fallbacks: true,
         direct_path_attribute_names: ["AXFilename", "AXPath", "AXDocument", "AXURL"],
@@ -1615,6 +1634,13 @@ impl HoverResolutionReference {
             HoverResolutionScope::HoveredRowDescendant => self.supports_hovered_row_descendant,
             HoverResolutionScope::NearbyCandidate => !self.rejects_nearby_candidates,
             HoverResolutionScope::FirstVisibleItem => !self.rejects_first_visible_fallbacks,
+        }
+    }
+
+    pub fn accepts_presentation_mode(self, mode: HoveredPresentationMode) -> bool {
+        match mode {
+            HoveredPresentationMode::List => true,
+            HoveredPresentationMode::NonList => self.supports_non_list_presentation_modes,
         }
     }
 }
@@ -2491,12 +2517,16 @@ mod tests {
 
         assert!(reference.accepts_scope(HoverResolutionScope::ExactItemUnderPointer));
         assert!(reference.accepts_scope(HoverResolutionScope::HoveredRowDescendant));
+        assert!(reference.accepts_presentation_mode(HoveredPresentationMode::List));
+        assert!(reference.accepts_presentation_mode(HoveredPresentationMode::NonList));
         assert!(!reference.accepts_scope(HoverResolutionScope::NearbyCandidate));
         assert!(!reference.accepts_scope(HoverResolutionScope::FirstVisibleItem));
         assert!(HoverResolutionScope::ExactItemUnderPointer.supports_macos_parity());
         assert!(HoverResolutionScope::HoveredRowDescendant.supports_macos_parity());
         assert!(!HoverResolutionScope::NearbyCandidate.supports_macos_parity());
         assert!(!HoverResolutionScope::FirstVisibleItem.supports_macos_parity());
+        assert_eq!(HoveredPresentationMode::List.label(), "list");
+        assert_eq!(HoveredPresentationMode::NonList.label(), "non-list");
     }
 
     #[test]

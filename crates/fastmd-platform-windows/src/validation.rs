@@ -32,7 +32,7 @@ pub struct AdapterValidationManifest {
     pub features: &'static [AdapterValidationFeature],
 }
 
-pub static WINDOWS_VALIDATION_FEATURES: [AdapterValidationFeature; 31] = [
+pub static WINDOWS_VALIDATION_FEATURES: [AdapterValidationFeature; 32] = [
     AdapterValidationFeature {
         blueprint_item: "Restrict Windows support target to Windows 11 plus Explorer only",
         status: FeatureStatus::ImplementedInThisCrate,
@@ -164,6 +164,11 @@ pub static WINDOWS_VALIDATION_FEATURES: [AdapterValidationFeature; 31] = [
         evidence: "PreviewWindowRequest now carries an optional warmed LoadedDocument payload, fastmd_core exposes the current hover-debounce candidate for host warmup, fastmd_render builds a warmed preview shell model from that preloaded document, and WindowsPreviewLoop now loads Markdown from disk during the 1-second debounce so the eventual preview-open request can reuse already-loaded content instead of blocking on open.",
     },
     AdapterValidationFeature {
+        blueprint_item: "Support `.md` preview triggering in non-list Explorer presentation modes instead of list-view-only behavior",
+        status: FeatureStatus::ImplementedInThisCrate,
+        evidence: "The Windows hover pipeline now keeps exact-item / hovered-row resolution active across non-list Explorer view modes, classifies the live Explorer `CurrentViewMode` into list vs non-list diagnostics, and proves through crate-owned tests that non-list icon/tile/content-style snapshots still reach the shared Markdown filter instead of staying list-view-only.",
+    },
+    AdapterValidationFeature {
         blueprint_item: "Ensure Explorer rename interactions never trigger preview opening or replacement",
         status: FeatureStatus::ImplementedInThisCrate,
         evidence: "FrontmostWindowSnapshot now carries focused text-input state from the live Explorer probe, shared FrontSurface contracts expose that state explicitly, fastmd_core clears any pending hover and suppresses hover-driven open/replacement while a frontmost file-manager text input is active, and WindowsPreviewLoop proves the suppression path does not require hover or coordinate probes while rename/search/path-bar editing is active.",
@@ -232,9 +237,19 @@ mod tests {
             .filter(|feature| feature.status.is_complete())
             .count();
 
-        assert_eq!(implemented_in_crate, 18);
+        assert_eq!(implemented_in_crate, 19);
         assert_eq!(implemented_via_shared, 13);
-        assert_eq!(completed, 31);
+        assert_eq!(completed, 32);
+        assert!(
+            manifest
+                .features
+                .iter()
+                .any(|feature| {
+                    feature.status == FeatureStatus::ImplementedInThisCrate
+                        && feature.blueprint_item
+                            == "Support `.md` preview triggering in non-list Explorer presentation modes instead of list-view-only behavior"
+                })
+        );
         assert!(
             manifest
                 .features
