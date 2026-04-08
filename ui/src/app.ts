@@ -1,6 +1,7 @@
 import {
   adjustWidthTier,
   bootstrapShell,
+  captureLinuxValidationReport,
   readHotInteractionSurface,
   readLinuxFrontmostGateDiagnostic,
   readLinuxEditLifecycleDiagnostic,
@@ -23,7 +24,13 @@ import {
 import { WIDTH_TIERS } from "./constants";
 import { demoBootstrapPayload } from "./fixtures";
 import { blockSource, escapeHtml, renderMarkdownDocument, sourceLines } from "./markdown";
-import type { BootstrapPayload, HostCapabilities, ShellState } from "./types";
+import type {
+  BootstrapPayload,
+  HostCapabilities,
+  LinuxValidationReport,
+  ScreenPoint,
+  ShellState,
+} from "./types";
 
 const PAGE_HEIGHT_FACTOR = 0.92;
 const OVERSHOOT_DISTANCE_LIMIT = 34;
@@ -114,6 +121,10 @@ export class PreviewShellApp {
   private transientStatus: string | null = null;
   private activeScrollFrame = 0;
   private unlistenFns: Array<() => void> = [];
+  private readonly debugApi = {
+    captureLinuxValidationReport: (anchor?: ScreenPoint): Promise<LinuxValidationReport | null> =>
+      captureLinuxValidationReport(anchor),
+  };
   private readonly onDoubleClick = (event: MouseEvent) => {
     const target = event.target;
     if (!(target instanceof Element)) {
@@ -210,6 +221,7 @@ export class PreviewShellApp {
     this.container.innerHTML = this.template();
     this.captureDom();
     this.installEventHandlers();
+    this.installDebugApi();
     void this.render(false);
   }
 
@@ -246,6 +258,9 @@ export class PreviewShellApp {
     this.renderRoot.removeEventListener("dblclick", this.onDoubleClick);
     window.removeEventListener("keydown", this.onKeyDown);
     window.removeEventListener("wheel", this.onWheel);
+    if (window.__FASTMD_DESKTOP__ === this.debugApi) {
+      delete window.__FASTMD_DESKTOP__;
+    }
 
     for (const unlisten of this.unlistenFns.splice(0)) {
       unlisten();
@@ -303,6 +318,10 @@ export class PreviewShellApp {
     this.renderRoot.addEventListener("dblclick", this.onDoubleClick);
     window.addEventListener("keydown", this.onKeyDown);
     window.addEventListener("wheel", this.onWheel, { passive: false });
+  }
+
+  private installDebugApi(): void {
+    window.__FASTMD_DESKTOP__ = this.debugApi;
   }
 
   private async applyBootstrapPayload(

@@ -59,7 +59,8 @@ pub use target::{
 };
 pub use validation::{
     crate_slice_validation_notes, ubuntu_adapter_preview_feature_coverage,
-    ubuntu_adapter_preview_feature_coverage_records, ubuntu_preview_feature_coverage,
+    ubuntu_adapter_preview_feature_coverage_records, ubuntu_live_validation_checklist_items,
+    ubuntu_parity_evidence_checklist_item, ubuntu_preview_feature_coverage,
     ubuntu_preview_feature_coverage_records, ubuntu_preview_feature_coverage_summary,
     ubuntu_preview_loop_validation_bundle, ubuntu_preview_loop_validation_summary,
     UbuntuPreviewFeatureCoverageEntry, UbuntuPreviewFeatureCoverageLane,

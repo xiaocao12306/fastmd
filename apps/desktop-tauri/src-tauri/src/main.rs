@@ -3,21 +3,22 @@ use std::{
     path::{Path, PathBuf},
     sync::Mutex,
     thread,
-    time::{Duration, Instant},
+    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
 use fastmd_platform_linux_nautilus::{
     api_stack_for_display_server, classify_live_frontmost_gate, classify_live_hovered_item,
-    display_server_label, frontmost_gate_pending_note, hovered_item_api_stack_for_display_server,
-    hovered_item_pending_note, ubuntu_preview_feature_coverage_summary, DisplayServerKind,
-    FrontmostAppSnapshot, FrontmostSurfaceRejection, HoverCandidate, HoverResolutionScope,
-    HoveredEntityKind, HoveredItemSnapshot, Monitor as PlatformMonitor,
-    MonitorLayout as PlatformMonitorLayout, ScreenPoint as PlatformScreenPoint,
-    ScreenRect as PlatformScreenRect, UbuntuPreviewFeatureCoverageSummary,
-    UbuntuPreviewLoopValidationBundle, DIAGNOSTIC_STATUS_EMITTED,
-    DIAGNOSTIC_STATUS_PENDING_LIVE_PROBE, EDIT_LIFECYCLE_POLICY, EDIT_LIFECYCLE_RUNTIME_NOTE,
-    MONITOR_SELECTION_POLICY, MONITOR_SELECTION_RUNTIME_NOTE, PREVIEW_PLACEMENT_POLICY,
-    PREVIEW_PLACEMENT_RUNTIME_NOTE,
+    crate_slice_validation_notes, display_server_label, frontmost_gate_pending_note,
+    hovered_item_api_stack_for_display_server, hovered_item_pending_note,
+    ubuntu_live_validation_checklist_items, ubuntu_parity_evidence_checklist_item,
+    ubuntu_preview_feature_coverage_summary, DisplayServerKind, FrontmostAppSnapshot,
+    FrontmostSurfaceRejection, HoverCandidate, HoverResolutionScope, HoveredEntityKind,
+    HoveredItemSnapshot, Monitor as PlatformMonitor, MonitorLayout as PlatformMonitorLayout,
+    ScreenPoint as PlatformScreenPoint, ScreenRect as PlatformScreenRect,
+    UbuntuPreviewFeatureCoverageSummary, UbuntuPreviewLoopValidationBundle, ValidationStatus,
+    DIAGNOSTIC_STATUS_EMITTED, DIAGNOSTIC_STATUS_PENDING_LIVE_PROBE, EDIT_LIFECYCLE_POLICY,
+    EDIT_LIFECYCLE_RUNTIME_NOTE, MONITOR_SELECTION_POLICY, MONITOR_SELECTION_RUNTIME_NOTE,
+    PREVIEW_PLACEMENT_POLICY, PREVIEW_PLACEMENT_RUNTIME_NOTE,
 };
 use fastmd_render::{stage2_rendering_contract, MarkdownFeature};
 use serde::{Deserialize, Serialize};
@@ -268,6 +269,79 @@ struct LinuxRuntimeDiagnosticsPayload {
     preview_placement: LinuxPreviewPlacementDiagnosticPayload,
     edit_lifecycle: LinuxEditLifecycleDiagnosticPayload,
     hover_lifecycle: LinuxHoverLifecycleDiagnosticPayload,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct LinuxValidationNotePayload {
+    item: String,
+    status: String,
+    note: String,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct LinuxValidationSectionPayload {
+    title: String,
+    status: String,
+    checklist_items: Vec<String>,
+    details: Vec<String>,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct LinuxValidationReportPayload {
+    target: String,
+    reference_surface: String,
+    display_server: String,
+    captured_at_unix_ms: u64,
+    anchor: Option<ScreenPoint>,
+    ready_to_close_reported_items: bool,
+    ready_checklist_items: Vec<String>,
+    blocked_checklist_items: Vec<String>,
+    sections: Vec<LinuxValidationSectionPayload>,
+    notes: Vec<LinuxValidationNotePayload>,
+    markdown: String,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum LinuxValidationSectionStatus {
+    Pass,
+    Fail,
+    NotCaptured,
+}
+
+impl LinuxValidationSectionStatus {
+    fn label(self) -> &'static str {
+        match self {
+            Self::Pass => "pass",
+            Self::Fail => "fail",
+            Self::NotCaptured => "not-captured",
+        }
+    }
+
+    fn is_pass(self) -> bool {
+        matches!(self, Self::Pass)
+    }
+}
+
+#[derive(Clone, Debug)]
+struct LinuxValidationSection {
+    title: &'static str,
+    status: LinuxValidationSectionStatus,
+    checklist_item: Option<String>,
+    details: Vec<String>,
+}
+
+impl LinuxValidationSection {
+    fn into_payload(self) -> LinuxValidationSectionPayload {
+        LinuxValidationSectionPayload {
+            title: self.title.to_owned(),
+            status: self.status.label().to_owned(),
+            checklist_items: self.checklist_item.into_iter().collect(),
+            details: self.details,
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -654,6 +728,579 @@ fn linux_runtime_diagnostics_payload() -> Option<LinuxRuntimeDiagnosticsPayload>
             note: LINUX_HOVER_LIFECYCLE_NOTE,
         },
     })
+}
+
+fn current_unix_ms() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_millis() as u64)
+        .unwrap_or(0)
+}
+
+fn linux_validation_note_status_label(status: ValidationStatus) -> &'static str {
+    match status {
+        ValidationStatus::ImplementedInSlice => "implemented-in-slice",
+        ValidationStatus::NeedsUbuntuHostValidation => "needs-ubuntu-host-validation",
+        ValidationStatus::BlockedByLowerLayers => "blocked-by-lower-layers",
+    }
+}
+
+fn linux_validation_display_server_kind(display_server: &str) -> Option<DisplayServerKind> {
+    match display_server {
+        "wayland" => Some(DisplayServerKind::Wayland),
+        "x11" => Some(DisplayServerKind::X11),
+        _ => None,
+    }
+}
+
+fn linux_validation_target(host_capabilities: &HostCapabilitiesPayload) -> String {
+    host_capabilities
+        .linux_parity_coverage
+        .as_ref()
+        .map(|payload| payload.target.to_owned())
+        .unwrap_or_else(|| "Ubuntu 24.04 + GNOME Files / Nautilus".to_owned())
+}
+
+fn linux_validation_reference_surface(host_capabilities: &HostCapabilitiesPayload) -> String {
+    host_capabilities
+        .linux_parity_coverage
+        .as_ref()
+        .map(|payload| payload.reference_surface.to_owned())
+        .unwrap_or_else(|| "apps/macos".to_owned())
+}
+
+fn linux_validation_format_point(point: Option<ScreenPoint>) -> String {
+    point
+        .map(|point| format!("x={}, y={}", point.x, point.y))
+        .unwrap_or_else(|| "not-captured".to_owned())
+}
+
+fn linux_validation_format_rect(rect: Option<&ScreenRectPayload>) -> String {
+    rect.map(|rect| {
+        format!(
+            "x={}, y={}, width={}, height={}",
+            rect.x, rect.y, rect.width, rect.height
+        )
+    })
+    .unwrap_or_else(|| "not-captured".to_owned())
+}
+
+fn linux_validation_format_geometry(geometry: Option<&PreviewGeometryPayload>) -> String {
+    geometry
+        .map(|geometry| {
+            format!(
+                "x={}, y={}, width={}, height={}",
+                geometry.x, geometry.y, geometry.width, geometry.height
+            )
+        })
+        .unwrap_or_else(|| "not-captured".to_owned())
+}
+
+fn linux_validation_notes_payload() -> Vec<LinuxValidationNotePayload> {
+    crate_slice_validation_notes()
+        .into_iter()
+        .map(|note| LinuxValidationNotePayload {
+            item: note.item.to_owned(),
+            status: linux_validation_note_status_label(note.status).to_owned(),
+            note: note.note.to_owned(),
+        })
+        .collect()
+}
+
+fn build_linux_frontmost_validation_section(
+    host_capabilities: &HostCapabilitiesPayload,
+    display_server: DisplayServerKind,
+) -> LinuxValidationSection {
+    let checklist_item = ubuntu_live_validation_checklist_items(display_server)[0].to_owned();
+    let Some(diagnostics) = host_capabilities.linux_runtime_diagnostics.as_ref() else {
+        return LinuxValidationSection {
+            title: "Frontmost Nautilus evidence",
+            status: LinuxValidationSectionStatus::NotCaptured,
+            checklist_item: Some(checklist_item),
+            details: vec![
+                "The shared desktop shell is not currently publishing Linux runtime diagnostics."
+                    .to_owned(),
+            ],
+        };
+    };
+    let frontmost_gate = &diagnostics.frontmost_gate;
+    let status = if frontmost_gate.status == DIAGNOSTIC_STATUS_PENDING_LIVE_PROBE {
+        LinuxValidationSectionStatus::NotCaptured
+    } else if frontmost_gate.status == DIAGNOSTIC_STATUS_EMITTED
+        && frontmost_gate.is_open == Some(true)
+        && host_capabilities.frontmost_file_manager == "nautilus"
+    {
+        LinuxValidationSectionStatus::Pass
+    } else {
+        LinuxValidationSectionStatus::Fail
+    };
+
+    LinuxValidationSection {
+        title: "Frontmost Nautilus evidence",
+        status,
+        checklist_item: Some(checklist_item),
+        details: vec![
+            format!("Display server: {}", frontmost_gate.display_server),
+            format!(
+                "Frontmost file manager: {}",
+                host_capabilities.frontmost_file_manager
+            ),
+            format!(
+                "Observed identifier: {}",
+                frontmost_gate
+                    .observed_identifier
+                    .as_deref()
+                    .unwrap_or("not-captured")
+            ),
+            format!(
+                "Stable surface id: {}",
+                frontmost_gate
+                    .stable_surface_id
+                    .as_deref()
+                    .unwrap_or("not-captured")
+            ),
+            format!(
+                "Gate open: {}",
+                frontmost_gate
+                    .is_open
+                    .map(|value| value.to_string())
+                    .unwrap_or_else(|| "not-captured".to_owned())
+            ),
+            format!(
+                "Rejection: {}",
+                frontmost_gate.rejection.as_deref().unwrap_or("none")
+            ),
+            format!("API stack: {}", frontmost_gate.api_stack),
+            format!(
+                "Backend: {}",
+                frontmost_gate.backend.as_deref().unwrap_or("not-captured")
+            ),
+            format!(
+                "Detail: {}",
+                frontmost_gate.detail.as_deref().unwrap_or("not-captured")
+            ),
+            format!("Note: {}", frontmost_gate.note),
+        ],
+    }
+}
+
+fn build_linux_hover_validation_section(
+    host_capabilities: &HostCapabilitiesPayload,
+    display_server: DisplayServerKind,
+) -> LinuxValidationSection {
+    let checklist_item = ubuntu_live_validation_checklist_items(display_server)[1].to_owned();
+    let Some(diagnostics) = host_capabilities.linux_runtime_diagnostics.as_ref() else {
+        return LinuxValidationSection {
+            title: "Hovered Markdown evidence",
+            status: LinuxValidationSectionStatus::NotCaptured,
+            checklist_item: Some(checklist_item),
+            details: vec![
+                "The shared desktop shell is not currently publishing Linux runtime diagnostics."
+                    .to_owned(),
+            ],
+        };
+    };
+    let hovered_item = &diagnostics.hovered_item;
+    let accepted_scope = matches!(
+        hovered_item.resolution_scope.as_deref(),
+        Some("exact-item-under-pointer" | "hovered-row-descendant")
+    );
+    let accepted_markdown_path = hovered_item
+        .path
+        .as_deref()
+        .is_some_and(|path| path.ends_with(".md"));
+    let status = if hovered_item.status == DIAGNOSTIC_STATUS_PENDING_LIVE_PROBE {
+        LinuxValidationSectionStatus::NotCaptured
+    } else if hovered_item.status == DIAGNOSTIC_STATUS_EMITTED
+        && hovered_item.accepted == Some(true)
+        && accepted_scope
+        && accepted_markdown_path
+    {
+        LinuxValidationSectionStatus::Pass
+    } else {
+        LinuxValidationSectionStatus::Fail
+    };
+
+    LinuxValidationSection {
+        title: "Hovered Markdown evidence",
+        status,
+        checklist_item: Some(checklist_item),
+        details: vec![
+            format!("Display server: {}", hovered_item.display_server),
+            format!(
+                "Resolution scope: {}",
+                hovered_item
+                    .resolution_scope
+                    .as_deref()
+                    .unwrap_or("not-captured")
+            ),
+            format!(
+                "Accepted: {}",
+                hovered_item
+                    .accepted
+                    .map(|value| value.to_string())
+                    .unwrap_or_else(|| "not-captured".to_owned())
+            ),
+            format!(
+                "Item name: {}",
+                hovered_item.item_name.as_deref().unwrap_or("not-captured")
+            ),
+            format!(
+                "Path: {}",
+                hovered_item.path.as_deref().unwrap_or("not-captured")
+            ),
+            format!(
+                "Path source: {}",
+                hovered_item
+                    .path_source
+                    .as_deref()
+                    .unwrap_or("not-captured")
+            ),
+            format!(
+                "Visible Markdown peers: {}",
+                hovered_item
+                    .visible_markdown_peer_count
+                    .map(|value| value.to_string())
+                    .unwrap_or_else(|| "not-captured".to_owned())
+            ),
+            format!(
+                "Rejection: {}",
+                hovered_item.rejection.as_deref().unwrap_or("none")
+            ),
+            format!("API stack: {}", hovered_item.api_stack),
+            format!(
+                "Backend: {}",
+                hovered_item.backend.as_deref().unwrap_or("not-captured")
+            ),
+            format!(
+                "Detail: {}",
+                hovered_item.detail.as_deref().unwrap_or("not-captured")
+            ),
+            format!("Note: {}", hovered_item.note),
+        ],
+    }
+}
+
+fn build_linux_monitor_validation_section(
+    host_capabilities: &HostCapabilitiesPayload,
+    display_server: DisplayServerKind,
+) -> LinuxValidationSection {
+    let checklist_item = ubuntu_live_validation_checklist_items(display_server)[2].to_owned();
+    let Some(diagnostics) = host_capabilities.linux_runtime_diagnostics.as_ref() else {
+        return LinuxValidationSection {
+            title: "Monitor and coordinate evidence",
+            status: LinuxValidationSectionStatus::NotCaptured,
+            checklist_item: Some(checklist_item),
+            details: vec![
+                "The shared desktop shell is not currently publishing Linux runtime diagnostics."
+                    .to_owned(),
+            ],
+        };
+    };
+    let monitor_selection = &diagnostics.monitor_selection;
+    let preview_placement = &diagnostics.preview_placement;
+    let status = if monitor_selection.selected_monitor_id.is_none()
+        && monitor_selection.work_area.is_none()
+        && preview_placement.applied_geometry.is_none()
+    {
+        LinuxValidationSectionStatus::NotCaptured
+    } else if monitor_selection.status == DIAGNOSTIC_STATUS_EMITTED
+        && monitor_selection.selected_monitor_id.is_some()
+        && monitor_selection.work_area.is_some()
+        && preview_placement.applied_geometry.is_some()
+    {
+        LinuxValidationSectionStatus::Pass
+    } else {
+        LinuxValidationSectionStatus::Fail
+    };
+
+    LinuxValidationSection {
+        title: "Monitor and coordinate evidence",
+        status,
+        checklist_item: Some(checklist_item),
+        details: vec![
+            format!("Display server: {}", diagnostics.display_server),
+            format!("Selection policy: {}", monitor_selection.selection_policy),
+            format!(
+                "Anchor: {}",
+                linux_validation_format_point(monitor_selection.anchor)
+            ),
+            format!(
+                "Selected monitor id: {}",
+                monitor_selection
+                    .selected_monitor_id
+                    .as_deref()
+                    .unwrap_or("not-captured")
+            ),
+            format!(
+                "Used nearest fallback: {}",
+                monitor_selection
+                    .used_nearest_fallback
+                    .map(|value| value.to_string())
+                    .unwrap_or_else(|| "not-captured".to_owned())
+            ),
+            format!(
+                "Work area: {}",
+                linux_validation_format_rect(monitor_selection.work_area.as_ref())
+            ),
+            format!(
+                "Requested width: {}",
+                preview_placement
+                    .requested_width
+                    .map(|value| value.to_string())
+                    .unwrap_or_else(|| "not-captured".to_owned())
+            ),
+            format!(
+                "Applied geometry: {}",
+                linux_validation_format_geometry(preview_placement.applied_geometry.as_ref())
+            ),
+            format!("Monitor note: {}", monitor_selection.note),
+            format!("Placement note: {}", preview_placement.note),
+        ],
+    }
+}
+
+fn build_linux_automated_parity_section(
+    host_capabilities: &HostCapabilitiesPayload,
+) -> LinuxValidationSection {
+    let parity_coverage = host_capabilities.linux_parity_coverage.as_ref();
+    let preview_loop_validation = host_capabilities.linux_preview_loop_validation.as_ref();
+    let status = match (parity_coverage, preview_loop_validation) {
+        (Some(parity_coverage), Some(preview_loop_validation))
+            if parity_coverage.matches_reference
+                && parity_coverage.missing_features.is_empty()
+                && preview_loop_validation.wayland.matches_reference
+                && preview_loop_validation.wayland.missing_features.is_empty()
+                && preview_loop_validation.x11.matches_reference
+                && preview_loop_validation.x11.missing_features.is_empty() =>
+        {
+            LinuxValidationSectionStatus::Pass
+        }
+        (Some(_), Some(_)) => LinuxValidationSectionStatus::Fail,
+        _ => LinuxValidationSectionStatus::NotCaptured,
+    };
+
+    LinuxValidationSection {
+        title: "Automated macOS-reference parity coverage",
+        status,
+        checklist_item: None,
+        details: vec![
+            format!(
+                "Feature coverage summary: {}",
+                parity_coverage
+                    .map(|coverage| format!(
+                        "{}/{} reference features covered",
+                        coverage.covered_feature_count, coverage.reference_feature_count
+                    ))
+                    .unwrap_or_else(|| "not-captured".to_owned())
+            ),
+            format!(
+                "Feature gaps: {}",
+                parity_coverage
+                    .map(|coverage| format!("{:?}", coverage.missing_features))
+                    .unwrap_or_else(|| "not-captured".to_owned())
+            ),
+            format!(
+                "Wayland preview-loop parity: {}",
+                preview_loop_validation
+                    .map(|bundle| bundle.wayland.matches_reference.to_string())
+                    .unwrap_or_else(|| "not-captured".to_owned())
+            ),
+            format!(
+                "X11 preview-loop parity: {}",
+                preview_loop_validation
+                    .map(|bundle| bundle.x11.matches_reference.to_string())
+                    .unwrap_or_else(|| "not-captured".to_owned())
+            ),
+            format!(
+                "Wayland note: {}",
+                preview_loop_validation
+                    .map(|bundle| bundle.wayland.note)
+                    .unwrap_or("not-captured")
+            ),
+            format!(
+                "X11 note: {}",
+                preview_loop_validation
+                    .map(|bundle| bundle.x11.note)
+                    .unwrap_or("not-captured")
+            ),
+        ],
+    }
+}
+
+fn linux_validation_report_markdown(report: &LinuxValidationReportPayload) -> String {
+    let implemented_notes = report
+        .notes
+        .iter()
+        .filter(|note| note.status == "implemented-in-slice")
+        .count();
+    let pending_host_validation_notes = report
+        .notes
+        .iter()
+        .filter(|note| note.status == "needs-ubuntu-host-validation")
+        .count();
+    let blocked_by_lower_layers_notes = report
+        .notes
+        .iter()
+        .filter(|note| note.status == "blocked-by-lower-layers")
+        .count();
+    let mut lines = vec![
+        "# Ubuntu 24.04 GNOME Files Validation Evidence Report".to_owned(),
+        String::new(),
+        format!("- Target: `{}`", report.target),
+        format!("- Reference surface: `{}`", report.reference_surface),
+        format!("- Display server: `{}`", report.display_server),
+        format!("- Captured at unix ms: `{}`", report.captured_at_unix_ms),
+        format!(
+            "- Hover anchor: `{}`",
+            linux_validation_format_point(report.anchor)
+        ),
+        format!(
+            "- Layer 7 reported-item closure readiness: `{}`",
+            if report.ready_to_close_reported_items {
+                "ready-to-close"
+            } else {
+                "not-ready-to-close"
+            }
+        ),
+        format!(
+            "- Checklist items ready for closure: `{}`",
+            report.ready_checklist_items.len()
+        ),
+        format!(
+            "- Checklist items still blocked: `{}`",
+            report.blocked_checklist_items.len()
+        ),
+        format!(
+            "- Validation notes implemented in slice: `{}`",
+            implemented_notes
+        ),
+        format!(
+            "- Validation notes still needing Ubuntu host evidence: `{}`",
+            pending_host_validation_notes
+        ),
+        format!(
+            "- Validation notes blocked by lower layers: `{}`",
+            blocked_by_lower_layers_notes
+        ),
+        String::new(),
+    ];
+
+    for checklist_item in &report.ready_checklist_items {
+        lines.push(format!("- Ready checklist item: {checklist_item}"));
+    }
+    for checklist_item in &report.blocked_checklist_items {
+        lines.push(format!("- Blocked checklist item: {checklist_item}"));
+    }
+    if !report.sections.is_empty() {
+        lines.push(String::new());
+    }
+
+    for section in &report.sections {
+        lines.push(format!("## {}", section.title));
+        lines.push(String::new());
+        lines.push(format!("- Status: `{}`", section.status));
+        for checklist_item in &section.checklist_items {
+            lines.push(format!("- Checklist item: {checklist_item}"));
+        }
+        for detail in &section.details {
+            lines.push(format!("- {detail}"));
+        }
+        lines.push(String::new());
+    }
+
+    let outstanding_notes: Vec<_> = report
+        .notes
+        .iter()
+        .filter(|note| note.status != "implemented-in-slice")
+        .collect();
+    if !outstanding_notes.is_empty() {
+        lines.push("## Outstanding validation notes".to_owned());
+        lines.push(String::new());
+        for note in outstanding_notes {
+            lines.push(format!("- [{}] {}: {}", note.status, note.item, note.note));
+        }
+        lines.push(String::new());
+    }
+
+    lines.join("\n")
+}
+
+fn build_linux_validation_report_payload(
+    host_capabilities: &HostCapabilitiesPayload,
+    anchor: Option<ScreenPoint>,
+) -> Result<LinuxValidationReportPayload, String> {
+    let display_server = host_capabilities
+        .linux_runtime_diagnostics
+        .as_ref()
+        .map(|diagnostics| diagnostics.display_server)
+        .ok_or_else(|| {
+            "Linux validation reports require Linux runtime diagnostics from the desktop shell."
+                .to_owned()
+        })?;
+    let display_server_kind = linux_validation_display_server_kind(display_server).ok_or_else(|| {
+        format!(
+            "Linux validation reports require an active Wayland or X11 session, got `{display_server}`."
+        )
+    })?;
+
+    let frontmost_section =
+        build_linux_frontmost_validation_section(host_capabilities, display_server_kind);
+    let hover_section =
+        build_linux_hover_validation_section(host_capabilities, display_server_kind);
+    let monitor_section =
+        build_linux_monitor_validation_section(host_capabilities, display_server_kind);
+    let automated_parity_section = build_linux_automated_parity_section(host_capabilities);
+
+    let mut ready_checklist_items = Vec::new();
+    let mut blocked_checklist_items = Vec::new();
+    for section in [&frontmost_section, &hover_section, &monitor_section] {
+        if let Some(checklist_item) = section.checklist_item.as_ref() {
+            if section.status.is_pass() {
+                ready_checklist_items.push(checklist_item.clone());
+            } else {
+                blocked_checklist_items.push(checklist_item.clone());
+            }
+        }
+    }
+
+    let ready_to_close_reported_items = [
+        frontmost_section.status,
+        hover_section.status,
+        monitor_section.status,
+        automated_parity_section.status,
+    ]
+    .into_iter()
+    .all(LinuxValidationSectionStatus::is_pass);
+    let parity_checklist_item = ubuntu_parity_evidence_checklist_item().to_owned();
+    if ready_to_close_reported_items {
+        ready_checklist_items.push(parity_checklist_item);
+    } else {
+        blocked_checklist_items.push(parity_checklist_item);
+    }
+
+    let sections = vec![
+        frontmost_section.into_payload(),
+        hover_section.into_payload(),
+        monitor_section.into_payload(),
+        automated_parity_section.into_payload(),
+    ];
+    let notes = linux_validation_notes_payload();
+    let mut report = LinuxValidationReportPayload {
+        target: linux_validation_target(host_capabilities),
+        reference_surface: linux_validation_reference_surface(host_capabilities),
+        display_server: display_server.to_owned(),
+        captured_at_unix_ms: current_unix_ms(),
+        anchor,
+        ready_to_close_reported_items,
+        ready_checklist_items,
+        blocked_checklist_items,
+        sections,
+        notes,
+        markdown: String::new(),
+    };
+    report.markdown = linux_validation_report_markdown(&report);
+    Ok(report)
 }
 
 fn bootstrap_source_document_path() -> Option<PathBuf> {
@@ -1647,6 +2294,72 @@ fn apply_preview_geometry_internal(
     Ok(geometry)
 }
 
+fn clear_linux_monitor_validation_snapshot(host_capabilities: &mut HostCapabilitiesPayload) {
+    let Some(diagnostics) = host_capabilities.linux_runtime_diagnostics.as_mut() else {
+        return;
+    };
+
+    diagnostics.monitor_selection.anchor = None;
+    diagnostics.monitor_selection.selected_monitor_id = None;
+    diagnostics.monitor_selection.used_nearest_fallback = None;
+    diagnostics.monitor_selection.work_area = None;
+    diagnostics.preview_placement.requested_width = None;
+    diagnostics.preview_placement.applied_geometry = None;
+}
+
+fn refresh_linux_validation_snapshot(
+    window: &WebviewWindow,
+    state: &ShellBridgeState,
+    anchor: Option<ScreenPoint>,
+) -> Result<(HostCapabilitiesPayload, Option<ScreenPoint>), String> {
+    if !cfg!(target_os = "linux") {
+        return Err(
+            "Linux validation reports are only available when the desktop shell is built for Linux."
+                .to_owned(),
+        );
+    }
+
+    if let Some(anchor) = anchor {
+        *state.last_anchor.lock().unwrap() = Some(anchor);
+    }
+    let remembered_anchor = *state.last_anchor.lock().unwrap();
+    let requested_width = {
+        let shell_state = state.shell_state.lock().unwrap();
+        shell_state.width_tiers[shell_state.selected_width_tier_index]
+    };
+
+    let snapshot = {
+        let mut host_capabilities = state.host_capabilities.lock().unwrap();
+        refresh_linux_frontmost_gate_diagnostics(&mut host_capabilities);
+        refresh_linux_hovered_item_diagnostics(&mut host_capabilities, remembered_anchor);
+
+        if let Some(effective_anchor) = remembered_anchor {
+            let selected_work_area = preview_work_area_for_anchor(window, effective_anchor)?;
+            let geometry = compute_preview_geometry(
+                effective_anchor,
+                selected_work_area.work_area,
+                requested_width,
+            );
+            update_linux_monitor_selection_diagnostics(
+                &mut host_capabilities,
+                effective_anchor,
+                &selected_work_area,
+            );
+            update_linux_preview_placement_diagnostics(
+                &mut host_capabilities,
+                requested_width,
+                &geometry,
+            );
+        } else {
+            clear_linux_monitor_validation_snapshot(&mut host_capabilities);
+        }
+
+        host_capabilities.clone()
+    };
+
+    Ok((snapshot, remembered_anchor))
+}
+
 fn reveal_preview_window(window: &WebviewWindow, state: &ShellBridgeState) -> Result<(), String> {
     let _ = apply_preview_geometry_internal(window, state, None)?;
     window.show().map_err(|error| error.to_string())?;
@@ -1955,6 +2668,19 @@ fn apply_preview_geometry(
 }
 
 #[tauri::command]
+fn capture_linux_validation_report(
+    app: AppHandle,
+    window: WebviewWindow,
+    state: State<'_, ShellBridgeState>,
+    anchor: Option<ScreenPoint>,
+) -> Result<LinuxValidationReportPayload, String> {
+    let (host_capabilities, remembered_anchor) =
+        refresh_linux_validation_snapshot(&window, &state, anchor)?;
+    emit_host_capabilities(&app, &state)?;
+    build_linux_validation_report_payload(&host_capabilities, remembered_anchor)
+}
+
+#[tauri::command]
 fn reveal_preview(
     app: AppHandle,
     window: WebviewWindow,
@@ -2005,6 +2731,7 @@ fn main() {
             save_preview_markdown,
             request_preview_close,
             apply_preview_geometry,
+            capture_linux_validation_report,
             reveal_preview,
         ])
         .on_window_event(|window, event| {
@@ -2637,6 +3364,64 @@ mod tests {
         cleanup_path(&path);
     }
 
+    #[test]
+    fn linux_validation_report_marks_wayland_items_ready_when_live_shell_evidence_passes() {
+        let host_capabilities = linux_validation_host_capabilities("wayland");
+
+        let report = build_linux_validation_report_payload(
+            &host_capabilities,
+            Some(ScreenPoint { x: 240.0, y: 180.0 }),
+        )
+        .expect("validation report");
+
+        assert_eq!(report.display_server, "wayland");
+        assert!(report.ready_to_close_reported_items);
+        assert!(report.ready_checklist_items.iter().any(|item| {
+            item == "Validate frontmost Nautilus detection on a real Ubuntu 24.04 Wayland session"
+        }));
+        assert!(report.ready_checklist_items.iter().any(|item| {
+            item == "Validate exact hovered-item resolution on a real Ubuntu 24.04 Wayland session"
+        }));
+        assert!(report.ready_checklist_items.iter().any(|item| {
+            item == "Validate monitor selection and coordinate handling on a real Ubuntu 24.04 Wayland session"
+        }));
+        assert!(report.ready_checklist_items.iter().any(|item| {
+            item == "Record Ubuntu-specific validation evidence proving one-to-one parity with macOS for each feature above"
+        }));
+        assert!(report.blocked_checklist_items.is_empty());
+        assert!(report.markdown.contains("ready-to-close"));
+    }
+
+    #[test]
+    fn linux_validation_report_keeps_hover_and_parity_items_blocked_without_live_hover_evidence() {
+        let mut host_capabilities = linux_validation_host_capabilities("x11");
+        let diagnostics = host_capabilities
+            .linux_runtime_diagnostics
+            .as_mut()
+            .expect("linux runtime diagnostics");
+        diagnostics.hovered_item.status = DIAGNOSTIC_STATUS_PENDING_LIVE_PROBE;
+        diagnostics.hovered_item.accepted = None;
+        diagnostics.hovered_item.path = None;
+        diagnostics.hovered_item.resolution_scope = None;
+        diagnostics.hovered_item.detail = None;
+
+        let report = build_linux_validation_report_payload(&host_capabilities, None)
+            .expect("validation report");
+
+        assert_eq!(report.display_server, "x11");
+        assert!(!report.ready_to_close_reported_items);
+        assert!(report.ready_checklist_items.iter().any(|item| {
+            item == "Validate frontmost Nautilus detection on a real Ubuntu 24.04 X11 session"
+        }));
+        assert!(report.blocked_checklist_items.iter().any(|item| {
+            item == "Validate exact hovered-item resolution on a real Ubuntu 24.04 X11 session"
+        }));
+        assert!(report.blocked_checklist_items.iter().any(|item| {
+            item == "Record Ubuntu-specific validation evidence proving one-to-one parity with macOS for each feature above"
+        }));
+        assert!(report.markdown.contains("not-ready-to-close"));
+    }
+
     fn temp_file_path(name: &str) -> PathBuf {
         let nonce = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -2647,6 +3432,146 @@ mod tests {
 
     fn cleanup_path(path: &Path) {
         let _ = fs::remove_file(path);
+    }
+
+    fn linux_validation_host_capabilities(display_server: &str) -> HostCapabilitiesPayload {
+        HostCapabilitiesPayload {
+            platform_id: "ubuntu",
+            runtime_mode: RuntimeMode::Desktop,
+            accessibility_permission: "unknown",
+            frontmost_file_manager: "nautilus",
+            preview_window_positioning: true,
+            global_shortcut_registered: true,
+            close_on_blur_enabled: true,
+            can_persist_preview_edits: true,
+            hot_interaction_surface: hot_interaction_surface_payload(),
+            shared_rendering_surface: shared_rendering_surface_payload(),
+            linux_probe_plans: None,
+            linux_preview_placement: None,
+            linux_parity_coverage: Some(UbuntuPreviewFeatureCoverageSummary {
+                target: "Ubuntu 24.04 + GNOME Files / Nautilus",
+                reference_surface: "apps/macos",
+                matches_reference: true,
+                covered_feature_count: 20,
+                reference_feature_count: 20,
+                missing_features: Vec::new(),
+                feature_lanes: Vec::new(),
+            }),
+            linux_preview_loop_validation: Some(UbuntuPreviewLoopValidationBundle {
+                wayland: fastmd_platform_linux_nautilus::ubuntu_preview_loop_validation_summary(
+                    DisplayServerKind::Wayland,
+                ),
+                x11: fastmd_platform_linux_nautilus::ubuntu_preview_loop_validation_summary(
+                    DisplayServerKind::X11,
+                ),
+            }),
+            linux_runtime_diagnostics: Some(LinuxRuntimeDiagnosticsPayload {
+                display_server: if display_server == "x11" {
+                    "x11"
+                } else {
+                    "wayland"
+                },
+                frontmost_gate: LinuxFrontmostGateDiagnosticPayload {
+                    status: DIAGNOSTIC_STATUS_EMITTED,
+                    display_server: if display_server == "x11" {
+                        "x11"
+                    } else {
+                        "wayland"
+                    },
+                    backend: Some(if display_server == "x11" {
+                        "live-atspi+xprop-x11".to_owned()
+                    } else {
+                        "live-atspi-wayland".to_owned()
+                    }),
+                    api_stack: "focus=AT-SPI focused accessible".to_owned(),
+                    observed_identifier: Some("org.gnome.Nautilus".to_owned()),
+                    stable_surface_id: Some("nautilus-surface-1".to_owned()),
+                    window_title: Some("Docs".to_owned()),
+                    process_id: Some(4242),
+                    is_open: Some(true),
+                    inferred_blur_close_reason: Some("outside-click".to_owned()),
+                    rejection: None,
+                    detail: Some(
+                        "Live Linux frontmost probing kept Nautilus as the foreground gate."
+                            .to_owned(),
+                    ),
+                    note: "Live frontmost note".to_owned(),
+                },
+                hovered_item: LinuxHoveredItemDiagnosticPayload {
+                    status: DIAGNOSTIC_STATUS_EMITTED,
+                    display_server: if display_server == "x11" {
+                        "x11"
+                    } else {
+                        "wayland"
+                    },
+                    api_stack: "pointer=AT-SPI Component.GetAccessibleAtPoint(screen)".to_owned(),
+                    backend: Some(if display_server == "x11" {
+                        "live-atspi-x11-hit-test".to_owned()
+                    } else {
+                        "live-atspi-wayland-hit-test".to_owned()
+                    }),
+                    resolution_scope: Some("exact-item-under-pointer".to_owned()),
+                    entity_kind: Some("file".to_owned()),
+                    item_name: Some("demo.md".to_owned()),
+                    path: Some("/home/demo/demo.md".to_owned()),
+                    path_source: Some("direct-path".to_owned()),
+                    visible_markdown_peer_count: Some(4),
+                    accepted: Some(true),
+                    rejection: None,
+                    detail: Some(
+                        "Live Linux hovered-item probing resolved /home/demo/demo.md through the shared markdown filter."
+                            .to_owned(),
+                    ),
+                    note: "Live hovered-item note".to_owned(),
+                },
+                monitor_selection: LinuxMonitorSelectionDiagnosticPayload {
+                    status: DIAGNOSTIC_STATUS_EMITTED,
+                    selection_policy: MONITOR_SELECTION_POLICY,
+                    anchor: Some(ScreenPoint { x: 240.0, y: 180.0 }),
+                    selected_monitor_id: Some("monitor-1".to_owned()),
+                    used_nearest_fallback: Some(false),
+                    work_area: Some(ScreenRectPayload {
+                        x: 0.0,
+                        y: 0.0,
+                        width: 1920.0,
+                        height: 1040.0,
+                    }),
+                    note: MONITOR_SELECTION_RUNTIME_NOTE,
+                },
+                preview_placement: LinuxPreviewPlacementDiagnosticPayload {
+                    status: DIAGNOSTIC_STATUS_EMITTED,
+                    policy: PREVIEW_PLACEMENT_POLICY,
+                    requested_width: Some(960),
+                    applied_geometry: Some(PreviewGeometryPayload {
+                        x: 300,
+                        y: 120,
+                        width: 960,
+                        height: 720,
+                    }),
+                    note: PREVIEW_PLACEMENT_RUNTIME_NOTE,
+                },
+                edit_lifecycle: LinuxEditLifecycleDiagnosticPayload {
+                    status: DIAGNOSTIC_STATUS_EMITTED,
+                    policy: EDIT_LIFECYCLE_POLICY,
+                    editing: false,
+                    close_on_blur_enabled: true,
+                    can_persist_preview_edits: true,
+                    last_close_reason: Some("outside-click".to_owned()),
+                    note: EDIT_LIFECYCLE_RUNTIME_NOTE,
+                },
+                hover_lifecycle: LinuxHoverLifecycleDiagnosticPayload {
+                    status: LINUX_HOVER_LIFECYCLE_STATUS_POLLING,
+                    polling_interval_ms: HOVER_POLL_INTERVAL.as_millis() as u64,
+                    trigger_delay_ms: HOVER_TRIGGER_DELAY.as_millis() as u64,
+                    last_anchor: Some(ScreenPoint { x: 240.0, y: 180.0 }),
+                    observed_path: Some("/home/demo/demo.md".to_owned()),
+                    preview_visible: true,
+                    preview_path: Some("/home/demo/demo.md".to_owned()),
+                    last_action: Some("opened:/home/demo/demo.md".to_owned()),
+                    note: LINUX_HOVER_LIFECYCLE_NOTE,
+                },
+            }),
+        }
     }
 
     fn hover_observation(

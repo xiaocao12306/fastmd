@@ -5,6 +5,12 @@ export type PermissionState = "granted" | "denied" | "unknown";
 export type FileManagerId = "finder" | "explorer" | "nautilus" | "unknown";
 export type CloseReason = "escape" | "focus-lost" | "outside-click" | "app-switch" | string;
 export type LinuxDiagnosticStatus = "pending-live-probe" | "emitted" | "probe-failed" | string;
+export type LinuxValidationNoteStatus =
+  | "implemented-in-slice"
+  | "needs-ubuntu-host-validation"
+  | "blocked-by-lower-layers"
+  | string;
+export type LinuxValidationSectionStatus = "pass" | "fail" | "not-captured" | string;
 export type LinuxHoverResolutionScope =
   | "exact-item-under-pointer"
   | "hovered-row-descendant"
@@ -213,6 +219,33 @@ export interface LinuxRuntimeDiagnostics {
   previewPlacement: LinuxPreviewPlacementDiagnostic;
   editLifecycle: LinuxEditLifecycleDiagnostic;
   hoverLifecycle?: LinuxHoverLifecycleDiagnostic | null;
+}
+
+export interface LinuxValidationNote {
+  item: string;
+  status: LinuxValidationNoteStatus;
+  note: string;
+}
+
+export interface LinuxValidationSection {
+  title: string;
+  status: LinuxValidationSectionStatus;
+  checklistItems: string[];
+  details: string[];
+}
+
+export interface LinuxValidationReport {
+  target: string;
+  referenceSurface: string;
+  displayServer: string;
+  capturedAtUnixMs: number;
+  anchor?: ScreenPoint | null;
+  readyToCloseReportedItems: boolean;
+  readyChecklistItems: string[];
+  blockedChecklistItems: string[];
+  sections: LinuxValidationSection[];
+  notes: LinuxValidationNote[];
+  markdown: string;
 }
 
 export interface BootstrapPayload {

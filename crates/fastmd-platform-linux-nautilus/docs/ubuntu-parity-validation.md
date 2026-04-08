@@ -36,6 +36,7 @@ Implemented and unit-tested in this slice:
 - the shared Tauri shell now exports that one semantic guardrail into hidden Linux probe-plan metadata, and shared UI tests confirm that switching the display-server plan from Wayland to X11 does not change the user-visible preview shell
 - shared contracts, shared core, shared render, and the Ubuntu adapter now publish one explicit macOS-reference feature-coverage summary, and the shared Tauri/UI lane surfaces that summary as hidden parity metadata instead of relying on an implicit parity claim
 - the Ubuntu lane now publishes one automated preview-loop validation summary for Wayland and one for X11, and both summaries prove that the shared core, shared render, and Ubuntu Nautilus adapter cover the full macOS reference feature list without claiming the still-open real Ubuntu host-evidence items
+- the shared Tauri shell now exposes one hidden Ubuntu validation-report capture path that bundles the current frontmost, hovered-item, monitor-selection, preview-placement, and automated parity diagnostics into one markdown evidence report for the active Wayland or X11 session without changing visible shell copy
 
 Not yet proven in this slice:
 

@@ -1,11 +1,13 @@
 import { vi } from "vitest";
 
 const {
+  captureLinuxValidationReportMock,
   replacePreviewMarkdownMock,
   requestPreviewCloseMock,
   savePreviewMarkdownMock,
   setEditingStateMock,
 } = vi.hoisted(() => ({
+  captureLinuxValidationReportMock: vi.fn(async () => null),
   replacePreviewMarkdownMock: vi.fn(async () => null),
   requestPreviewCloseMock: vi.fn(async () => {}),
   savePreviewMarkdownMock: vi.fn(async () => null),
@@ -16,6 +18,7 @@ vi.mock("./bridge", async () => {
   const actual = await vi.importActual<typeof import("./bridge")>("./bridge");
   return {
     ...actual,
+    captureLinuxValidationReport: captureLinuxValidationReportMock,
     replacePreviewMarkdown: replacePreviewMarkdownMock,
     requestPreviewClose: requestPreviewCloseMock,
     savePreviewMarkdown: savePreviewMarkdownMock,
@@ -46,6 +49,7 @@ describe("FastMD shared preview shell", () => {
   afterEach(() => {
     app?.destroy();
     app = null;
+    captureLinuxValidationReportMock.mockClear();
     replacePreviewMarkdownMock.mockClear();
     requestPreviewCloseMock.mockClear();
     savePreviewMarkdownMock.mockClear();
@@ -148,6 +152,40 @@ describe("FastMD shared preview shell", () => {
 
     expect(statusBanner?.hidden).toBe(false);
     expect(statusBanner?.textContent).toContain("attached to a local Markdown file");
+  });
+
+  it("registers a hidden desktop validation-report capture API", async () => {
+    const report = {
+      target: "Ubuntu 24.04 + GNOME Files / Nautilus",
+      referenceSurface: "apps/macos",
+      displayServer: "wayland",
+      capturedAtUnixMs: 1710000000000,
+      anchor: { x: 240, y: 180 },
+      readyToCloseReportedItems: false,
+      readyChecklistItems: [
+        "Validate frontmost Nautilus detection on a real Ubuntu 24.04 Wayland session",
+      ],
+      blockedChecklistItems: [
+        "Record Ubuntu-specific validation evidence proving one-to-one parity with macOS for each feature above",
+      ],
+      sections: [],
+      notes: [],
+      markdown: "# Ubuntu 24.04 GNOME Files Validation Evidence Report",
+    };
+    captureLinuxValidationReportMock.mockResolvedValueOnce(report);
+
+    createApp();
+
+    const captured = await window.__FASTMD_DESKTOP__?.captureLinuxValidationReport({
+      x: 240,
+      y: 180,
+    });
+
+    expect(captureLinuxValidationReportMock).toHaveBeenCalledWith({ x: 240, y: 180 });
+    expect(captured).toEqual(report);
+    expect(document.body.textContent).not.toContain(
+      "Ubuntu 24.04 GNOME Files Validation Evidence Report",
+    );
   });
 
   it("stores Ubuntu probe-plan diagnostics as hidden shell metadata", async () => {

@@ -11,6 +11,19 @@ use serde::{Deserialize, Serialize};
 
 use crate::target::{supported_surface_label, DisplayServerKind, MACOS_REFERENCE_ROOT};
 
+const WAYLAND_LIVE_VALIDATION_CHECKLIST_ITEMS: [&str; 3] = [
+    "Validate frontmost Nautilus detection on a real Ubuntu 24.04 Wayland session",
+    "Validate exact hovered-item resolution on a real Ubuntu 24.04 Wayland session",
+    "Validate monitor selection and coordinate handling on a real Ubuntu 24.04 Wayland session",
+];
+const X11_LIVE_VALIDATION_CHECKLIST_ITEMS: [&str; 3] = [
+    "Validate frontmost Nautilus detection on a real Ubuntu 24.04 X11 session",
+    "Validate exact hovered-item resolution on a real Ubuntu 24.04 X11 session",
+    "Validate monitor selection and coordinate handling on a real Ubuntu 24.04 X11 session",
+];
+const UBUNTU_PARITY_EVIDENCE_CHECKLIST_ITEM: &str =
+    "Record Ubuntu-specific validation evidence proving one-to-one parity with macOS for each feature above";
+
 /// Validation status for this crate slice.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ValidationStatus {
@@ -490,12 +503,26 @@ pub fn ubuntu_preview_loop_validation_bundle() -> UbuntuPreviewLoopValidationBun
     }
 }
 
+pub fn ubuntu_live_validation_checklist_items(
+    display_server: DisplayServerKind,
+) -> &'static [&'static str; 3] {
+    match display_server {
+        DisplayServerKind::Wayland => &WAYLAND_LIVE_VALIDATION_CHECKLIST_ITEMS,
+        DisplayServerKind::X11 => &X11_LIVE_VALIDATION_CHECKLIST_ITEMS,
+    }
+}
+
+pub fn ubuntu_parity_evidence_checklist_item() -> &'static str {
+    UBUNTU_PARITY_EVIDENCE_CHECKLIST_ITEM
+}
+
 #[cfg(test)]
 mod tests {
     use std::collections::BTreeSet;
 
     use super::{
-        crate_slice_validation_notes, ubuntu_preview_feature_coverage,
+        crate_slice_validation_notes, ubuntu_live_validation_checklist_items,
+        ubuntu_parity_evidence_checklist_item, ubuntu_preview_feature_coverage,
         ubuntu_preview_feature_coverage_records, ubuntu_preview_feature_coverage_summary,
         ubuntu_preview_loop_validation_bundle, ubuntu_preview_loop_validation_summary,
         UbuntuPreviewFeatureCoverageLane, ValidationStatus,
@@ -624,5 +651,24 @@ mod tests {
                 == "Validate the full Ubuntu preview loop end-to-end against the macOS feature list on X11"
                 && note.status == ValidationStatus::ImplementedInSlice
         }));
+    }
+
+    #[test]
+    fn live_validation_checklists_stay_display_server_specific() {
+        let wayland = ubuntu_live_validation_checklist_items(DisplayServerKind::Wayland);
+        let x11 = ubuntu_live_validation_checklist_items(DisplayServerKind::X11);
+
+        assert_eq!(wayland.len(), 3);
+        assert_eq!(x11.len(), 3);
+        assert!(wayland.iter().all(|item| item.contains("Wayland")));
+        assert!(x11.iter().all(|item| item.contains("X11")));
+    }
+
+    #[test]
+    fn parity_evidence_checklist_item_stays_explicit() {
+        assert_eq!(
+            ubuntu_parity_evidence_checklist_item(),
+            "Record Ubuntu-specific validation evidence proving one-to-one parity with macOS for each feature above"
+        );
     }
 }

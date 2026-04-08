@@ -11,6 +11,7 @@ import type {
   LinuxParityCoverage,
   LinuxPreviewLoopValidation,
   LinuxProbePlans,
+  LinuxValidationReport,
   LinuxRuntimeDiagnostics,
   PreviewGeometry,
   ScreenPoint,
@@ -79,6 +80,12 @@ export async function requestPreviewClose(reason: CloseReason): Promise<void> {
 
 export async function applyPreviewGeometry(anchor?: ScreenPoint): Promise<PreviewGeometry | null> {
   return safeInvoke<PreviewGeometry>("apply_preview_geometry", { anchor });
+}
+
+export async function captureLinuxValidationReport(
+  anchor?: ScreenPoint,
+): Promise<LinuxValidationReport | null> {
+  return safeInvoke<LinuxValidationReport>("capture_linux_validation_report", { anchor });
 }
 
 export async function revealPreview(): Promise<void> {

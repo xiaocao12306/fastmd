@@ -1,5 +1,17 @@
+import type { LinuxValidationReport, ScreenPoint } from "./types";
+
 declare module "markdown-it-footnote";
 declare module "markdown-it-task-lists";
+
+declare global {
+  interface Window {
+    __FASTMD_DESKTOP__?: {
+      captureLinuxValidationReport: (
+        anchor?: ScreenPoint,
+      ) => Promise<LinuxValidationReport | null>;
+    };
+  }
+}
 
 declare module "katex/contrib/auto-render" {
   interface Delimiter {
@@ -17,3 +29,5 @@ declare module "katex/contrib/auto-render" {
   const renderMathInElement: (element: HTMLElement, options?: RenderMathOptions) => void;
   export default renderMathInElement;
 }
+
+export {};
