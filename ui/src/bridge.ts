@@ -218,6 +218,17 @@ export function readLinuxValidationEvidenceLatestReports(
   return capabilities.linuxValidationEvidence?.latestReports ?? [];
 }
 
+export function readLinuxValidationEvidenceLatestReportByDisplayServer(
+  capabilities: HostCapabilities,
+  displayServer: string,
+): LinuxValidationEvidenceReport | null {
+  return (
+    readLinuxValidationEvidenceLatestReports(capabilities).find(
+      (report) => report.displayServer === displayServer,
+    ) ?? null
+  );
+}
+
 export function readLinuxFrontmostGateDiagnostic(
   capabilities: HostCapabilities,
 ): LinuxRuntimeDiagnostics["frontmostGate"] | null {

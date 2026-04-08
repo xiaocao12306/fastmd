@@ -21,6 +21,7 @@ import {
   exportDesktopShellValidationArtifacts,
   listenToShellState,
   readLinuxFrontmostTextInputState,
+  readLinuxValidationEvidenceLatestReportByDisplayServer,
   readLinuxHoveredItemPresentationMode,
   startPreviewWindowDrag,
 } from "./bridge";
@@ -121,8 +122,16 @@ describe("FastMD Tauri bridge", () => {
             displayServer: "wayland",
             capturedAtUnixMs: 1710000000000,
             readyToCloseDisplayServerReport: true,
+            reportMarkdownPath:
+              "/repo/Docs/Test_Logs/ubuntu-validation-report-wayland-1710000000000.md",
             reportJsonPath:
               "/repo/Docs/Test_Logs/ubuntu-validation-report-wayland-1710000000000.json",
+            readyChecklistItems: [
+              "Validate frontmost Nautilus detection on a real Ubuntu 24.04 Wayland session",
+            ],
+            blockedChecklistItems: [
+              "Record Ubuntu-specific validation evidence proving one-to-one parity with macOS for each feature above",
+            ],
           },
         ],
       },
@@ -252,5 +261,50 @@ describe("FastMD Tauri bridge", () => {
     });
 
     expect(mode).toBe("non-list");
+  });
+
+  it("extracts the cached latest validation report for one display server", () => {
+    const report = readLinuxValidationEvidenceLatestReportByDisplayServer(
+      {
+        ...demoBootstrapPayload.hostCapabilities,
+        linuxValidationEvidence: {
+          status: "cross-session-review-required",
+          checklistItem:
+            "Record Ubuntu-specific validation evidence proving one-to-one parity with macOS for each feature above",
+          note:
+            "Single-session validation reports can only prove one live Ubuntu display server at a time.",
+          requiredDisplayServers: ["wayland", "x11"],
+          capturedDisplayServers: ["wayland"],
+          missingDisplayServers: ["x11"],
+          readyDisplayServerReports: ["wayland"],
+          latestReports: [
+            {
+              displayServer: "wayland",
+              capturedAtUnixMs: 1710000000000,
+              readyToCloseDisplayServerReport: true,
+              reportMarkdownPath:
+                "/repo/Docs/Test_Logs/ubuntu-validation-report-wayland-1710000000000.md",
+              reportJsonPath:
+                "/repo/Docs/Test_Logs/ubuntu-validation-report-wayland-1710000000000.json",
+              readyChecklistItems: [
+                "Validate frontmost Nautilus detection on a real Ubuntu 24.04 Wayland session",
+              ],
+              blockedChecklistItems: [
+                "Record Ubuntu-specific validation evidence proving one-to-one parity with macOS for each feature above",
+              ],
+            },
+          ],
+        },
+      },
+      "wayland",
+    );
+
+    expect(report?.reportMarkdownPath).toContain("ubuntu-validation-report-wayland");
+    expect(report?.readyChecklistItems).toEqual([
+      "Validate frontmost Nautilus detection on a real Ubuntu 24.04 Wayland session",
+    ]);
+    expect(report?.blockedChecklistItems).toEqual([
+      "Record Ubuntu-specific validation evidence proving one-to-one parity with macOS for each feature above",
+    ]);
   });
 });

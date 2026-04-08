@@ -212,7 +212,10 @@ struct LinuxValidationEvidenceReportPayload {
     display_server: String,
     captured_at_unix_ms: u64,
     ready_to_close_display_server_report: bool,
+    report_markdown_path: Option<String>,
     report_json_path: String,
+    ready_checklist_items: Vec<String>,
+    blocked_checklist_items: Vec<String>,
 }
 
 #[derive(Clone, Serialize)]
@@ -716,12 +719,18 @@ fn load_linux_validation_report_artifact(
     let report: LinuxValidationReportPayload =
         serde_json::from_str(&fs::read_to_string(path).ok()?).ok()?;
     let display_server = report.display_server.clone();
+    let report_markdown_path = path.with_extension("md");
 
     Some(LinuxValidationEvidenceReportPayload {
         display_server,
         captured_at_unix_ms: report.captured_at_unix_ms,
         ready_to_close_display_server_report: report.ready_to_close_display_server_report,
+        report_markdown_path: report_markdown_path
+            .is_file()
+            .then(|| path_string(&report_markdown_path)),
         report_json_path: path_string(path),
+        ready_checklist_items: report.ready_checklist_items.clone(),
+        blocked_checklist_items: report.blocked_checklist_items.clone(),
     })
 }
 
@@ -4441,6 +4450,40 @@ mod tests {
                 .as_ref()
                 .map(|payload| payload.missing_display_servers.clone()),
             Some(vec!["x11".to_owned()])
+        );
+        assert_eq!(
+            export
+                .linux_validation_evidence
+                .as_ref()
+                .and_then(|payload| payload.latest_reports.first())
+                .and_then(|report| report.report_markdown_path.clone()),
+            export.linux_validation_report_markdown_path.clone()
+        );
+        assert_eq!(
+            export
+                .linux_validation_evidence
+                .as_ref()
+                .and_then(|payload| payload.latest_reports.first())
+                .map(|report| report.ready_checklist_items.clone()),
+            Some(vec![
+                "Validate frontmost Nautilus detection on a real Ubuntu 24.04 Wayland session"
+                    .to_owned(),
+                "Validate exact hovered-item resolution on a real Ubuntu 24.04 Wayland session"
+                    .to_owned(),
+                "Validate monitor selection and coordinate handling on a real Ubuntu 24.04 Wayland session"
+                    .to_owned(),
+            ])
+        );
+        assert_eq!(
+            export
+                .linux_validation_evidence
+                .as_ref()
+                .and_then(|payload| payload.latest_reports.first())
+                .map(|report| report.blocked_checklist_items.clone()),
+            Some(vec![
+                "Record Ubuntu-specific validation evidence proving one-to-one parity with macOS for each feature above"
+                    .to_owned(),
+            ])
         );
 
         let snapshot_markdown = fs::read_to_string(&export.snapshot_markdown_path)

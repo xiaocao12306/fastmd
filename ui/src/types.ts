@@ -161,7 +161,10 @@ export interface LinuxValidationEvidenceReport {
   displayServer: string;
   capturedAtUnixMs: number;
   readyToCloseDisplayServerReport: boolean;
+  reportMarkdownPath?: string | null;
   reportJsonPath: string;
+  readyChecklistItems: string[];
+  blockedChecklistItems: string[];
 }
 
 export interface PreviewGeometryRect {

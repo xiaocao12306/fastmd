@@ -324,8 +324,16 @@ describe("FastMD shared preview shell", () => {
             displayServer: "wayland",
             capturedAtUnixMs: 1710000000000,
             readyToCloseDisplayServerReport: true,
+            reportMarkdownPath:
+              "/repo/Docs/Test_Logs/ubuntu-validation-report-wayland-1710000000000.md",
             reportJsonPath:
               "/repo/Docs/Test_Logs/ubuntu-validation-report-wayland-1710000000000.json",
+            readyChecklistItems: [
+              "Validate frontmost Nautilus detection on a real Ubuntu 24.04 Wayland session",
+            ],
+            blockedChecklistItems: [
+              "Record Ubuntu-specific validation evidence proving one-to-one parity with macOS for each feature above",
+            ],
           },
         ],
       },
@@ -387,10 +395,26 @@ describe("FastMD shared preview shell", () => {
           note:
             "Single-session validation reports can only prove one live Ubuntu display server at a time. Keep the umbrella Ubuntu parity-evidence checklist item open until reviewed real-machine evidence exists for both Wayland and X11.",
           requiredDisplayServers: ["wayland", "x11"],
-          capturedDisplayServers: [],
-          missingDisplayServers: ["wayland", "x11"],
-          readyDisplayServerReports: [],
-          latestReports: [],
+          capturedDisplayServers: ["wayland"],
+          missingDisplayServers: ["x11"],
+          readyDisplayServerReports: ["wayland"],
+          latestReports: [
+            {
+              displayServer: "wayland",
+              capturedAtUnixMs: 1710000000000,
+              readyToCloseDisplayServerReport: true,
+              reportMarkdownPath:
+                "/repo/Docs/Test_Logs/ubuntu-validation-report-wayland-1710000000000.md",
+              reportJsonPath:
+                "/repo/Docs/Test_Logs/ubuntu-validation-report-wayland-1710000000000.json",
+              readyChecklistItems: [
+                "Validate frontmost Nautilus detection on a real Ubuntu 24.04 Wayland session",
+              ],
+              blockedChecklistItems: [
+                "Record Ubuntu-specific validation evidence proving one-to-one parity with macOS for each feature above",
+              ],
+            },
+          ],
         },
       });
       return hostCapabilitiesUnlisten;
@@ -416,6 +440,19 @@ describe("FastMD shared preview shell", () => {
       "cross-session-review-required",
     );
     expect(shell?.dataset.linuxValidationEvidenceNote).toContain("Wayland and X11");
+    expect(shell?.dataset.linuxValidationEvidenceWaylandReportMarkdownPath).toContain(
+      "ubuntu-validation-report-wayland",
+    );
+    expect(shell?.dataset.linuxValidationEvidenceWaylandReadyChecklistItems).toBe(
+      JSON.stringify([
+        "Validate frontmost Nautilus detection on a real Ubuntu 24.04 Wayland session",
+      ]),
+    );
+    expect(shell?.dataset.linuxValidationEvidenceWaylandBlockedChecklistItems).toBe(
+      JSON.stringify([
+        "Record Ubuntu-specific validation evidence proving one-to-one parity with macOS for each feature above",
+      ]),
+    );
     expect(statusBanner?.hidden).toBe(false);
     expect(statusBanner?.textContent).toContain("Preview close requested: app-switch.");
 
@@ -465,6 +502,8 @@ describe("FastMD shared preview shell", () => {
       JSON.stringify(["wayland", "x11"]),
     );
     expect(shell?.dataset.linuxValidationEvidenceLatestReports).toBe("[]");
+    expect(shell?.dataset.linuxValidationEvidenceWaylandReportMarkdownPath).toBeUndefined();
+    expect(shell?.dataset.linuxValidationEvidenceX11ReportMarkdownPath).toBeUndefined();
     expect(document.body.textContent).not.toContain("cross-session-review-required");
     expect(document.body.textContent).not.toContain(
       "Record Ubuntu-specific validation evidence",

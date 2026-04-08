@@ -17,6 +17,7 @@ import {
   readLinuxProbePlans,
   readLinuxRuntimeDiagnostics,
   readLinuxValidationEvidence,
+  readLinuxValidationEvidenceLatestReportByDisplayServer,
   readLinuxValidationEvidenceLatestReports,
   readPreviewWindowDragSurface,
   readSharedRenderingPipeline,
@@ -655,6 +656,14 @@ export class PreviewShellApp {
 
   private syncLinuxValidationEvidenceAttributes(): void {
     const validationEvidence = readLinuxValidationEvidence(this.hostCapabilities);
+    const clearDisplayServerReportData = (prefix: string): void => {
+      delete this.shellNode.dataset[`${prefix}CapturedAtUnixMs`];
+      delete this.shellNode.dataset[`${prefix}ReadyToCloseDisplayServerReport`];
+      delete this.shellNode.dataset[`${prefix}ReportMarkdownPath`];
+      delete this.shellNode.dataset[`${prefix}ReportJsonPath`];
+      delete this.shellNode.dataset[`${prefix}ReadyChecklistItems`];
+      delete this.shellNode.dataset[`${prefix}BlockedChecklistItems`];
+    };
 
     if (!validationEvidence) {
       delete this.shellNode.dataset.linuxValidationEvidenceStatus;
@@ -665,6 +674,8 @@ export class PreviewShellApp {
       delete this.shellNode.dataset.linuxValidationEvidenceMissingDisplayServers;
       delete this.shellNode.dataset.linuxValidationEvidenceReadyDisplayServerReports;
       delete this.shellNode.dataset.linuxValidationEvidenceLatestReports;
+      clearDisplayServerReportData("linuxValidationEvidenceWayland");
+      clearDisplayServerReportData("linuxValidationEvidenceX11");
       return;
     }
 
@@ -695,6 +706,36 @@ export class PreviewShellApp {
       "linuxValidationEvidenceLatestReports",
       JSON.stringify(latestReports),
     );
+
+    for (const [displayServer, prefix] of [
+      ["wayland", "linuxValidationEvidenceWayland"],
+      ["x11", "linuxValidationEvidenceX11"],
+    ] as const) {
+      const report = readLinuxValidationEvidenceLatestReportByDisplayServer(
+        this.hostCapabilities,
+        displayServer,
+      );
+      if (!report) {
+        clearDisplayServerReportData(prefix);
+        continue;
+      }
+
+      this.setShellData(`${prefix}CapturedAtUnixMs`, report.capturedAtUnixMs);
+      this.setShellData(
+        `${prefix}ReadyToCloseDisplayServerReport`,
+        report.readyToCloseDisplayServerReport,
+      );
+      this.setShellData(`${prefix}ReportMarkdownPath`, report.reportMarkdownPath);
+      this.setShellData(`${prefix}ReportJsonPath`, report.reportJsonPath);
+      this.setShellData(
+        `${prefix}ReadyChecklistItems`,
+        JSON.stringify(report.readyChecklistItems),
+      );
+      this.setShellData(
+        `${prefix}BlockedChecklistItems`,
+        JSON.stringify(report.blockedChecklistItems),
+      );
+    }
   }
 
   private setShellData(
