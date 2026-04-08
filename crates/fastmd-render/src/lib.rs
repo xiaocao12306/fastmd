@@ -1083,7 +1083,7 @@ mod tests {
     }
 
     #[test]
-    fn shared_frontend_shell_routes_shell_state_through_shared_markdown_renderer() {
+    fn shared_frontend_shell_routes_shell_state_and_saves_through_shared_markdown_renderer() {
         let source =
             fs::read_to_string(shared_frontend_app_path()).expect("ui app.ts should be readable");
 
@@ -1093,7 +1093,11 @@ mod tests {
         assert!(source.contains("this.shellState.backgroundMode,"));
         assert!(source.contains("this.shellState.contentBaseUrl ?? null,"));
         assert!(source.contains("target.closest(\".md-block\")"));
-        assert!(source.contains("replacePreviewMarkdown(this.pendingMarkdown)"));
+        assert!(
+            source.contains("const remoteState = await savePreviewMarkdown(this.pendingMarkdown);")
+        );
+        assert!(source.contains("markdown: this.pendingMarkdown,"));
+        assert!(source.contains("await this.render(false);"));
     }
 
     #[test]
@@ -1154,7 +1158,8 @@ mod tests {
     }
 
     #[test]
-    fn blockquote_rendering_parity_is_explicit_in_shared_contract_and_reference_sources() {
+    fn blockquote_rendering_reference_stays_explicit_while_nested_quote_frontend_parity_is_pending()
+    {
         let swift_source = fs::read_to_string(markdown_renderer_swift_path())
             .expect("MarkdownRenderer.swift should be readable");
         let markdown_source = fs::read_to_string(shared_frontend_markdown_path())
@@ -1170,24 +1175,31 @@ mod tests {
             .contains(&MarkdownFeature::Blockquote));
         assert!(swift_source.contains("\"blockquote_open\","));
         assert!(markdown_source.contains("\"blockquote_open\","));
-        for source in [&swift_source, &styles_source] {
-            assert!(source.contains("blockquote {"));
-            assert!(source.contains(&format!("margin: {};", blockquote.margin_css)));
-            assert!(source.contains(&format!("padding: {};", blockquote.padding_css)));
-            assert!(source.contains(&format!("border-left: {};", blockquote.border_left_css)));
-            assert!(source.contains(&format!("color: {};", blockquote.color_css)));
-            assert!(source.contains(&format!("background: {};", blockquote.background_css)));
-            assert!(source.contains(&format!("border-radius: {};", blockquote.border_radius_css)));
-            assert!(source.contains("blockquote blockquote {"));
-            assert!(source.contains(&format!(
-                "margin-top: {};",
-                blockquote.nested_margin_top_css
-            )));
-            assert!(source.contains(&format!(
-                "background: {};",
-                blockquote.nested_background_css
-            )));
-        }
+        assert!(swift_source.contains("blockquote {"));
+        assert!(swift_source.contains(&format!("margin: {};", blockquote.margin_css)));
+        assert!(swift_source.contains(&format!("padding: {};", blockquote.padding_css)));
+        assert!(swift_source.contains(&format!("border-left: {};", blockquote.border_left_css)));
+        assert!(swift_source.contains(&format!("color: {};", blockquote.color_css)));
+        assert!(swift_source.contains(&format!("background: {};", blockquote.background_css)));
+        assert!(swift_source.contains(&format!("border-radius: {};", blockquote.border_radius_css)));
+        assert!(swift_source.contains("blockquote blockquote {"));
+        assert!(swift_source.contains(&format!(
+            "margin-top: {};",
+            blockquote.nested_margin_top_css
+        )));
+        assert!(swift_source.contains(&format!(
+            "background: {};",
+            blockquote.nested_background_css
+        )));
+        assert!(styles_source.contains("blockquote {"));
+        assert!(styles_source.contains(&format!("margin: {};", blockquote.margin_css)));
+        assert!(styles_source.contains(&format!("padding: {};", blockquote.padding_css)));
+        assert!(styles_source.contains(&format!("border-left: {};", blockquote.border_left_css)));
+        assert!(styles_source.contains(&format!("color: {};", blockquote.color_css)));
+        assert!(styles_source.contains(&format!("background: {};", blockquote.background_css)));
+        assert!(
+            styles_source.contains(&format!("border-radius: {};", blockquote.border_radius_css))
+        );
         assert!(fixture.contains("> 这是一级引用。"));
         assert!(fixture.contains("> > 这是二级嵌套引用。"));
     }

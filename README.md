@@ -70,30 +70,45 @@ This repository currently contains:
 
 ## Stage 2 shared Rust workspace
 
-Stage 2 now has a buildable shared Rust workspace at the repository root for the shared product-semantic layers:
+Stage 2 now uses one repository-root Cargo workspace for the shared product-semantic layers, the platform adapter crates, and the future desktop shell:
 
+- `apps/desktop-tauri/src-tauri`
+  Shared Tauri shell entrypoint for the cross-platform desktop app.
 - `crates/fastmd-contracts`
-  Shared DTOs, commands, events, preview state, and host error envelopes.
+  Shared DTOs, commands, events, preview state, validation metadata, and host error envelopes.
 - `crates/fastmd-core`
   Shared hover/open/replace/close/edit/paging semantics derived from the current macOS app.
 - `crates/fastmd-render`
-  Shared width tiers, theme variables, hint-chip contract, render DTOs, and block-mapping contracts.
+  Shared width tiers, theme variables, hint-chip contract, render DTOs, diagnostics DTOs, and block-mapping contracts.
 - `crates/fastmd-platform`
   Shared host traits for front-surface detection, preview windows, and document loading/saving.
+- `crates/fastmd-platform-macos`
+  macOS Finder adapter lane.
+- `crates/fastmd-platform-windows`
+  Windows 11 Explorer adapter lane.
+- `crates/fastmd-platform-linux-nautilus`
+  Ubuntu 24.04 GNOME Files adapter lane.
 
-The platform implementation crates for macOS, Windows, and Ubuntu 24.04 GNOME Files remain separate Stage 2 lanes and are not wired into the root workspace yet.
+Cross-platform direction stays strict:
+
+- `apps/macos` remains the behavioral reference implementation during Stage 2.
+- Shared contracts, core, and render logic define the product semantics every desktop target must reproduce.
+- Windows 11 + Explorer and Ubuntu 24.04 + GNOME Files stay isolated behind adapter crates instead of leaking OS-specific behavior into the shared core.
+- Real-machine validation evidence is still required before any non-macOS platform can be claimed as parity-complete.
 
 ## Stage 2 validation commands
 
-These are the repository-level commands that should stay green as Stage 2 work lands:
+These are the repo-root validation commands that currently anchor Stage 2 work:
 
 ```bash
-cargo check
-cargo test
+cargo check -p fastmd-contracts -p fastmd-core -p fastmd-render
+cargo test -p fastmd-contracts -p fastmd-core -p fastmd-render
 swift build --package-path apps/macos
 xcodebuild -project apps/macos/FastMD.xcodeproj -scheme FastMD -destination 'platform=macOS,arch=arm64' build
 xcodebuild -project apps/macos/FastMD.xcodeproj -scheme FastMD -destination 'platform=macOS,arch=arm64' test
 ```
+
+The shared-crate commands above validate the current Stage 2 contracts/core/render lane without over-claiming full desktop-shell or per-platform host parity. Windows and Ubuntu parity still require their adapter-owned checks plus real-machine evidence capture before those lanes can be called complete.
 
 ## Known limitations
 

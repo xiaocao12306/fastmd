@@ -485,7 +485,7 @@ Checklist reset rule:
 - [x] Encode emphasis and strong rendering parity
 - [x] Encode fenced-code rendering parity
 - [x] Encode syntax-highlighted code rendering parity
-- [x] Encode blockquote rendering parity
+- [ ] Encode blockquote rendering parity
 - [x] Encode task-list rendering parity
 - [x] Encode table rendering parity
 - [ ] Encode Mermaid rendering parity
@@ -663,12 +663,12 @@ Checklist reset rule:
 
 - [ ] Add a root verification flow that runs the macOS Swift checks plus the Stage 2 Rust/Tauri checks
 - [ ] Add `cargo check` coverage for the Stage 2 Rust workspace
-- [ ] Add `cargo test` coverage for shared contracts, shared core, and render logic
+- [x] Add `cargo test` coverage for shared contracts, shared core, and render logic
 - [ ] Add integration validation for the Tauri desktop shell
 - [x] Add validation coverage that explicitly compares Windows behavior against the macOS reference feature list
 - [x] Add validation coverage that explicitly compares Ubuntu behavior against the macOS reference feature list
 - [ ] Record validation evidence for macOS Finder, Windows Explorer, and Ubuntu 24.04 GNOME Files
-- [ ] Update `README.md` with the Stage 2 workspace structure and cross-platform direction
+- [x] Update `README.md` with the Stage 2 workspace structure and cross-platform direction
 - [ ] Update `Docs/Support_Matrix.md` with Stage 2 platform capability status as implementation lands
 - [ ] Keep the legacy macOS Swift app buildable until shared-core parity is proven
 - [ ] Declare Stage 2 complete only when macOS, Windows 11, and Ubuntu 24.04 behave the same at the product-semantic level through the shared contracts and shared core
