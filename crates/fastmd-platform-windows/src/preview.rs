@@ -290,30 +290,32 @@ pub fn windows_adapter_preview_feature_coverage() -> &'static [MacOsPreviewFeatu
     ]
 }
 
+const WINDOWS_ADAPTER_PREVIEW_FEATURE_COVERAGE_RECORDS: [PreviewFeatureCoverageRecord; 5] = [
+    PreviewFeatureCoverageRecord::new(
+        MacOsPreviewFeature::FrontmostFileManagerGating,
+        PreviewFeatureCoverageLane::WindowsAdapter,
+    ),
+    PreviewFeatureCoverageRecord::new(
+        MacOsPreviewFeature::ExactHoveredMarkdownResolution,
+        PreviewFeatureCoverageLane::WindowsAdapter,
+    ),
+    PreviewFeatureCoverageRecord::new(
+        MacOsPreviewFeature::AcceptedLocalMarkdownFilesOnly,
+        PreviewFeatureCoverageLane::WindowsAdapter,
+    ),
+    PreviewFeatureCoverageRecord::new(
+        MacOsPreviewFeature::MonitorSelectionAndCoordinateTranslation,
+        PreviewFeatureCoverageLane::WindowsAdapter,
+    ),
+    PreviewFeatureCoverageRecord::new(
+        MacOsPreviewFeature::RuntimeDiagnosticsCoverage,
+        PreviewFeatureCoverageLane::WindowsAdapter,
+    ),
+];
+
 pub fn windows_adapter_preview_feature_coverage_records() -> &'static [PreviewFeatureCoverageRecord]
 {
-    &[
-        PreviewFeatureCoverageRecord::new(
-            MacOsPreviewFeature::FrontmostFileManagerGating,
-            PreviewFeatureCoverageLane::WindowsAdapter,
-        ),
-        PreviewFeatureCoverageRecord::new(
-            MacOsPreviewFeature::ExactHoveredMarkdownResolution,
-            PreviewFeatureCoverageLane::WindowsAdapter,
-        ),
-        PreviewFeatureCoverageRecord::new(
-            MacOsPreviewFeature::AcceptedLocalMarkdownFilesOnly,
-            PreviewFeatureCoverageLane::WindowsAdapter,
-        ),
-        PreviewFeatureCoverageRecord::new(
-            MacOsPreviewFeature::MonitorSelectionAndCoordinateTranslation,
-            PreviewFeatureCoverageLane::WindowsAdapter,
-        ),
-        PreviewFeatureCoverageRecord::new(
-            MacOsPreviewFeature::RuntimeDiagnosticsCoverage,
-            PreviewFeatureCoverageLane::WindowsAdapter,
-        ),
-    ]
+    &WINDOWS_ADAPTER_PREVIEW_FEATURE_COVERAGE_RECORDS
 }
 
 pub fn windows_preview_loop_feature_coverage() -> Vec<MacOsPreviewFeature> {

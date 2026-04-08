@@ -612,6 +612,20 @@ pub struct TaskListRenderingReference {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TableRenderingReference {
+    pub width_css: &'static str,
+    pub border_collapse_css: &'static str,
+    pub margin_css: &'static str,
+    pub font_family_css: &'static str,
+    pub font_size_css: &'static str,
+    pub border_radius_css: &'static str,
+    pub border_css: &'static str,
+    pub box_shadow_css: &'static str,
+    pub header_background_css: &'static str,
+    pub cell_padding_css: &'static str,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct InlineMarkupRenderingReference {
     pub emphasis_html_tag: &'static str,
     pub strong_html_tag: &'static str,
@@ -661,6 +675,7 @@ pub struct RenderingReference {
     pub chrome: RenderingChromeReference,
     pub layout: RenderingLayoutReference,
     pub code: RenderingCodeReference,
+    pub table: TableRenderingReference,
     pub text: RenderingTextReference,
 }
 
@@ -1075,6 +1090,18 @@ pub static MACOS_REFERENCE_BEHAVIOR: MacOsReferenceBehavior = MacOsReferenceBeha
                 auto_detect_api: "highlightAuto",
                 escape_fallback_api: "escapeHtml",
             },
+        },
+        table: TableRenderingReference {
+            width_css: "100%",
+            border_collapse_css: "collapse",
+            margin_css: "1rem 0",
+            font_family_css: "var(--font-ui)",
+            font_size_css: "0.96rem",
+            border_radius_css: "12px",
+            border_css: "1px solid var(--border)",
+            box_shadow_css: "0 8px 18px rgba(15, 23, 42, 0.06)",
+            header_background_css: "color-mix(in srgb, var(--accent-soft) 42%, var(--surface))",
+            cell_padding_css: "11px 12px",
         },
         text: RenderingTextReference {
             heading: HeadingRenderingReference {
@@ -1848,6 +1875,25 @@ mod tests {
         );
         assert!(rendering.runtime.syntax_highlight_uses_highlight_js);
         assert!(rendering.runtime.syntax_highlight_falls_back_to_auto_detect);
+    }
+
+    #[test]
+    fn macos_reference_behavior_exposes_table_rendering_parity_details() {
+        let table = MACOS_REFERENCE_BEHAVIOR.rendering.table;
+
+        assert_eq!(table.width_css, "100%");
+        assert_eq!(table.border_collapse_css, "collapse");
+        assert_eq!(table.margin_css, "1rem 0");
+        assert_eq!(table.font_family_css, "var(--font-ui)");
+        assert_eq!(table.font_size_css, "0.96rem");
+        assert_eq!(table.border_radius_css, "12px");
+        assert_eq!(table.border_css, "1px solid var(--border)");
+        assert_eq!(table.box_shadow_css, "0 8px 18px rgba(15, 23, 42, 0.06)");
+        assert_eq!(
+            table.header_background_css,
+            "color-mix(in srgb, var(--accent-soft) 42%, var(--surface))"
+        );
+        assert_eq!(table.cell_padding_css, "11px 12px");
     }
 
     #[test]
