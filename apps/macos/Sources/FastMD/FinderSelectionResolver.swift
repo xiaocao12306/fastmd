@@ -96,6 +96,11 @@ final class FinderSelectionResolver {
     private var spaceTriggerEnabled: Bool = PreferencesStore.spaceTriggerEnabled
     private var pendingRefreshWorkItem: DispatchWorkItem?
     private let refreshDebounce: TimeInterval = 0.05
+    /// Flips to true the first time the coordinator calls `activate()`,
+    /// which only happens after Accessibility trust is confirmed. Guards
+    /// any AX API access — without trust, AX calls silently fail with
+    /// kAXErrorAPIDisabled and leave a dead observer behind.
+    private var isActivated: Bool = false
 
     private var axObserver: AXObserver?
     private var axFinderElement: AXUIElement?
@@ -156,25 +161,32 @@ final class FinderSelectionResolver {
     init() {
         installWorkspaceObservers()
         refreshFinderPid()
-        if finderPid != 0 {
-            attachAXObserver(to: finderPid)
-        }
-        scheduleRefresh(reason: "initial")
+        // Intentionally DO NOT attach the AX observer here. The resolver is
+        // constructed as a stored property on the coordinator, which in turn
+        // is a stored property on AppDelegate — so init() runs before
+        // applicationDidFinishLaunching and therefore before the process has
+        // been confirmed Accessibility-trusted. Any AX call made before the
+        // trust check returns kAXErrorAPIDisabled (-25211), which would leave
+        // us with a dead observer for the rest of the session. Trust-gated
+        // attachment happens in `activate()`, which the coordinator calls
+        // from its own start() right after the trust check succeeds.
     }
 
     deinit {
         NSWorkspace.shared.notificationCenter.removeObserver(self)
-        // AXObserver detach runs from a nonisolated deinit; it only touches
-        // the run loop source and releases the observer, both of which are
-        // safe off the main actor.
-        detachAXObserverInDeinit()
     }
 
-    private nonisolated func detachAXObserverInDeinit() {
-        // Best-effort teardown. The strong reference on `axObserver` is
-        // released via the class's implicit deinit anyway; here we just make
-        // sure the run loop source is removed so stale callbacks do not
-        // fire into a dead Unmanaged pointer.
+    /// Called by the coordinator once the process has confirmed Accessibility
+    /// trust. Installs the AX observer on Finder and triggers an initial
+    /// selection refresh. Safe to call multiple times; a subsequent call is a
+    /// no-op unless the resolver currently has no AX observer attached.
+    func activate() {
+        isActivated = true
+        refreshFinderPid()
+        if finderPid != 0, axObserver == nil {
+            attachAXObserver(to: finderPid)
+        }
+        scheduleRefresh(reason: "activate")
     }
 
     func setSpaceTriggerEnabled(_ enabled: Bool) {
@@ -263,9 +275,16 @@ final class FinderSelectionResolver {
     private func performRefresh(reason: String) {
         if finderPid == 0 {
             refreshFinderPid()
-            if finderPid != 0 {
-                attachAXObserver(to: finderPid)
-            }
+        }
+
+        // Self-heal: if Accessibility trust was granted after init (the
+        // common case on first launch) or the observer dropped, reattach
+        // now. AX calls only succeed once the process is trusted, so this
+        // is also our retry after a permission grant. Skipped entirely
+        // before activate() has been called: at that point the process is
+        // still waiting for trust, and any AX call would silently fail.
+        if isActivated && finderPid != 0 && axObserver == nil {
+            attachAXObserver(to: finderPid)
         }
 
         guard finderPid != 0 else {
@@ -361,6 +380,7 @@ final class FinderSelectionResolver {
         let finderElement = AXUIElementCreateApplication(pid)
         let refcon = Unmanaged.passUnretained(self).toOpaque()
 
+        var succeeded = 0
         for notification in axAppLevelNotifications {
             let addResult = AXObserverAddNotification(
                 observer,
@@ -368,11 +388,24 @@ final class FinderSelectionResolver {
                 notification as CFString,
                 refcon
             )
-            if addResult != .success && addResult != .notificationAlreadyRegistered {
+            if addResult == .success || addResult == .notificationAlreadyRegistered {
+                succeeded += 1
+            } else {
                 RuntimeLogger.log(
                     "FinderSelectionResolver: AXObserverAddNotification failed for \(notification) result=\(addResult.rawValue)"
                 )
             }
+        }
+
+        guard succeeded > 0 else {
+            // Every notification registration failed. This usually means
+            // kAXErrorAPIDisabled — the process is not Accessibility-trusted
+            // yet. Discard the observer so performRefresh will retry on the
+            // next refresh cycle.
+            RuntimeLogger.log(
+                "FinderSelectionResolver: AX observer dropped because no notification could be registered for pid=\(pid). Will retry."
+            )
+            return
         }
 
         CFRunLoopAddSource(
@@ -383,7 +416,9 @@ final class FinderSelectionResolver {
 
         axObserver = observer
         axFinderElement = finderElement
-        RuntimeLogger.log("FinderSelectionResolver: AX observer attached to pid=\(pid)")
+        RuntimeLogger.log(
+            "FinderSelectionResolver: AX observer attached to pid=\(pid) (\(succeeded)/\(axAppLevelNotifications.count) notifications)"
+        )
     }
 
     private func detachAXObserver() {

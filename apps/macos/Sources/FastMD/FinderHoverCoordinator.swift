@@ -57,8 +57,10 @@ final class FinderHoverCoordinator {
             return
         }
         isRunning = true
+        // Trust has just been confirmed; it is now safe to touch the AX API
+        // and install the observer on Finder.
+        selectionResolver.activate()
         applyTriggerPreferences()
-        selectionResolver.refreshNow(reason: "coordinator start")
         RuntimeLogger.log(
             "Coordinator started. hover=\(PreferencesStore.hoverTriggerEnabled) space=\(PreferencesStore.spaceTriggerEnabled)"
         )
