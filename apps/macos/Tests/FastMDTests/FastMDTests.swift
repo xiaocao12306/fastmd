@@ -1,4 +1,5 @@
 import Foundation
+import AppKit
 import Testing
 @testable import FastMD
 
@@ -174,4 +175,42 @@ func warmedPreviewCacheDropsSnapshotsAfterTheSourceFileChanges() throws {
         backgroundMode: .white
     )
     #expect(cachedAfterChange == nil)
+}
+
+@Test
+func previewPanelTopChromeDragRegionTracksTheToolbarBand() {
+    let windowSize = NSSize(width: 960, height: 720)
+    let region = PreviewPanelController.topChromeDragRegion(windowSize: windowSize)
+
+    #expect(region.origin.x == 0)
+    #expect(region.origin.y == 662)
+    #expect(region.width == 960)
+    #expect(region.height == 58)
+    #expect(
+        PreviewPanelController.isPointInTopChromeDragRegion(
+            NSPoint(x: 120, y: 710),
+            windowSize: windowSize
+        )
+    )
+    #expect(
+        !PreviewPanelController.isPointInTopChromeDragRegion(
+            NSPoint(x: 120, y: 650),
+            windowSize: windowSize
+        )
+    )
+}
+
+@Test
+func previewPanelTopChromeDragRegionClampsForShortWindows() {
+    let windowSize = NSSize(width: 320, height: 40)
+    let region = PreviewPanelController.topChromeDragRegion(windowSize: windowSize)
+
+    #expect(region.origin.y == 0)
+    #expect(region.height == 40)
+    #expect(
+        PreviewPanelController.isPointInTopChromeDragRegion(
+            NSPoint(x: 10, y: 5),
+            windowSize: windowSize
+        )
+    )
 }

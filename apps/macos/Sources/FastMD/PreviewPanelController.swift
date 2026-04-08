@@ -108,6 +108,8 @@ final class WarmedPreviewCache {
 
 @MainActor
 final class PreviewPanelController: NSObject, WKNavigationDelegate {
+    nonisolated static let topChromeDragHeight: CGFloat = 58
+
     private let panel: PreviewPanelWindow
     private let contentContainer = NSView()
     private let webView: WKWebView
@@ -377,8 +379,12 @@ final class PreviewPanelController: NSObject, WKNavigationDelegate {
         }
 
         localClickMonitor = NSEvent.addLocalMonitorForEvents(matching: mask) { [weak self] event in
+            guard let self else { return event }
+            if self.handlePotentialTopChromeDrag(event) {
+                return nil
+            }
             Task { @MainActor in
-                self?.handlePotentialOutsideClick()
+                self.handlePotentialOutsideClick()
             }
             return event
         }
@@ -445,6 +451,39 @@ final class PreviewPanelController: NSObject, WKNavigationDelegate {
         guard !panel.frame.contains(NSEvent.mouseLocation) else { return }
         RuntimeLogger.log("Outside click detected for preview panel.")
         onOutsideClick?()
+    }
+
+    @discardableResult
+    private func handlePotentialTopChromeDrag(_ event: NSEvent) -> Bool {
+        guard shouldStartTopChromeDrag(for: event) else { return false }
+        RuntimeLogger.log("Preview top chrome drag started.")
+        panel.performDrag(with: event)
+        return true
+    }
+
+    private func shouldStartTopChromeDrag(for event: NSEvent) -> Bool {
+        guard event.type == .leftMouseDown else { return false }
+        guard panel.isVisible else { return false }
+        guard !isEditing else { return false }
+        guard event.window === panel else { return false }
+        return Self.isPointInTopChromeDragRegion(
+            event.locationInWindow,
+            windowSize: contentContainer.bounds.size
+        )
+    }
+
+    nonisolated static func topChromeDragRegion(windowSize: NSSize) -> NSRect {
+        let clampedHeight = max(0, min(topChromeDragHeight, windowSize.height))
+        return NSRect(
+            x: 0,
+            y: max(0, windowSize.height - clampedHeight),
+            width: max(0, windowSize.width),
+            height: clampedHeight
+        )
+    }
+
+    nonisolated static func isPointInTopChromeDragRegion(_ point: NSPoint, windowSize: NSSize) -> Bool {
+        topChromeDragRegion(windowSize: windowSize).contains(point)
     }
 
     private func handlePotentialHotKey(_ event: NSEvent, canConsume: Bool) -> Bool {
