@@ -168,6 +168,56 @@ impl ValidationCaptureProvenance {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ValidationHostEnvironment {
+    pub platform_id: PlatformId,
+    pub operating_system: String,
+    pub operating_system_version: Option<String>,
+    pub operating_system_build: Option<String>,
+    pub file_manager: Option<String>,
+    pub host_name: Option<String>,
+    pub architecture: Option<String>,
+    pub captured_at_utc: Option<String>,
+}
+
+impl ValidationHostEnvironment {
+    pub fn operating_system_label(&self) -> String {
+        let mut label = self.operating_system.clone();
+
+        if let Some(version) = self
+            .operating_system_version
+            .as_deref()
+            .filter(|value| !value.trim().is_empty())
+        {
+            label.push(' ');
+            label.push_str(version);
+        }
+
+        if let Some(build) = self
+            .operating_system_build
+            .as_deref()
+            .filter(|value| !value.trim().is_empty())
+        {
+            label.push_str(" (build ");
+            label.push_str(build);
+            label.push(')');
+        }
+
+        label
+    }
+
+    pub fn target_label(&self) -> String {
+        match self
+            .file_manager
+            .as_deref()
+            .filter(|value| !value.trim().is_empty())
+        {
+            Some(file_manager) => format!("{} + {}", self.operating_system_label(), file_manager),
+            None => self.operating_system_label(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DocumentPath(pub String);
 
 impl DocumentPath {
@@ -860,6 +910,17 @@ pub fn merged_preview_feature_coverage_records(
     records.into_iter().collect()
 }
 
+pub fn preview_feature_coverage_from_records(
+    records: &[PreviewFeatureCoverageRecord],
+) -> Vec<MacOsPreviewFeature> {
+    let mut features = BTreeSet::new();
+    for record in records {
+        features.insert(record.feature);
+    }
+
+    features.into_iter().collect()
+}
+
 pub fn preview_feature_coverage_lanes(
     records: &[PreviewFeatureCoverageRecord],
     feature: MacOsPreviewFeature,
@@ -872,6 +933,27 @@ pub fn preview_feature_coverage_lanes(
     }
 
     lanes.into_iter().collect()
+}
+
+pub fn preview_feature_coverage_record_gaps_against_reference(
+    record_sets: &[&[PreviewFeatureCoverageRecord]],
+) -> Vec<MacOsPreviewFeature> {
+    let merged_records = merged_preview_feature_coverage_records(record_sets);
+    let covered: BTreeSet<_> = preview_feature_coverage_from_records(&merged_records)
+        .into_iter()
+        .collect();
+
+    macos_preview_feature_list()
+        .iter()
+        .copied()
+        .filter(|feature| !covered.contains(feature))
+        .collect()
+}
+
+pub fn preview_feature_coverage_records_match_reference(
+    record_sets: &[&[PreviewFeatureCoverageRecord]],
+) -> bool {
+    preview_feature_coverage_record_gaps_against_reference(record_sets).is_empty()
 }
 
 pub fn preview_feature_gaps_against_reference(
@@ -2071,12 +2153,109 @@ mod tests {
 
         assert_eq!(records.len(), 4);
         assert_eq!(
+            preview_feature_coverage_from_records(&records),
+            vec![
+                MacOsPreviewFeature::HoverOpensAfterOneSecond,
+                MacOsPreviewFeature::WidthTierModel,
+                MacOsPreviewFeature::CompactHintChipChrome,
+            ]
+        );
+        assert_eq!(
             preview_feature_coverage_lanes(&records, MacOsPreviewFeature::WidthTierModel),
             vec![
                 PreviewFeatureCoverageLane::SharedCore,
                 PreviewFeatureCoverageLane::WindowsAdapter,
             ]
         );
+        assert!(
+            preview_feature_coverage_record_gaps_against_reference(&[&records])
+                .contains(&MacOsPreviewFeature::RuntimeDiagnosticsCoverage)
+        );
+        assert!(!preview_feature_coverage_records_match_reference(&[
+            &records
+        ]));
+        assert!(preview_feature_coverage_records_match_reference(&[&[
+            PreviewFeatureCoverageRecord::new(
+                MacOsPreviewFeature::FrontmostFileManagerGating,
+                PreviewFeatureCoverageLane::WindowsAdapter,
+            ),
+            PreviewFeatureCoverageRecord::new(
+                MacOsPreviewFeature::ExactHoveredMarkdownResolution,
+                PreviewFeatureCoverageLane::WindowsAdapter,
+            ),
+            PreviewFeatureCoverageRecord::new(
+                MacOsPreviewFeature::AcceptedLocalMarkdownFilesOnly,
+                PreviewFeatureCoverageLane::WindowsAdapter,
+            ),
+            PreviewFeatureCoverageRecord::new(
+                MacOsPreviewFeature::MonitorSelectionAndCoordinateTranslation,
+                PreviewFeatureCoverageLane::WindowsAdapter,
+            ),
+            PreviewFeatureCoverageRecord::new(
+                MacOsPreviewFeature::HoverOpensAfterOneSecond,
+                PreviewFeatureCoverageLane::SharedCore,
+            ),
+            PreviewFeatureCoverageRecord::new(
+                MacOsPreviewFeature::DifferentDocumentReplacesCurrentPreview,
+                PreviewFeatureCoverageLane::SharedCore,
+            ),
+            PreviewFeatureCoverageRecord::new(
+                MacOsPreviewFeature::StationaryHoveredItemDoesNotReopen,
+                PreviewFeatureCoverageLane::SharedCore,
+            ),
+            PreviewFeatureCoverageRecord::new(
+                MacOsPreviewFeature::SameDocumentPointerMotionKeepsPreview,
+                PreviewFeatureCoverageLane::SharedCore,
+            ),
+            PreviewFeatureCoverageRecord::new(
+                MacOsPreviewFeature::WidthTierModel,
+                PreviewFeatureCoverageLane::SharedCore,
+            ),
+            PreviewFeatureCoverageRecord::new(
+                MacOsPreviewFeature::PreviewPlacementRepositionBeforeShrink,
+                PreviewFeatureCoverageLane::SharedCore,
+            ),
+            PreviewFeatureCoverageRecord::new(
+                MacOsPreviewFeature::CompactHintChipChrome,
+                PreviewFeatureCoverageLane::SharedRender,
+            ),
+            PreviewFeatureCoverageRecord::new(
+                MacOsPreviewFeature::HotInteractionSurface,
+                PreviewFeatureCoverageLane::SharedCore,
+            ),
+            PreviewFeatureCoverageRecord::new(
+                MacOsPreviewFeature::BackgroundToggleTab,
+                PreviewFeatureCoverageLane::SharedCore,
+            ),
+            PreviewFeatureCoverageRecord::new(
+                MacOsPreviewFeature::ScrollWheelAndTouchpad,
+                PreviewFeatureCoverageLane::SharedCore,
+            ),
+            PreviewFeatureCoverageRecord::new(
+                MacOsPreviewFeature::PagingKeysAndStickyMotion,
+                PreviewFeatureCoverageLane::SharedCore,
+            ),
+            PreviewFeatureCoverageRecord::new(
+                MacOsPreviewFeature::InlineBlockEditEntryAndSourceMapping,
+                PreviewFeatureCoverageLane::WindowsAdapter,
+            ),
+            PreviewFeatureCoverageRecord::new(
+                MacOsPreviewFeature::EditSaveCancelAndLock,
+                PreviewFeatureCoverageLane::WindowsAdapter,
+            ),
+            PreviewFeatureCoverageRecord::new(
+                MacOsPreviewFeature::ClosePolicyOutsideClickAppSwitchEscape,
+                PreviewFeatureCoverageLane::SharedCore,
+            ),
+            PreviewFeatureCoverageRecord::new(
+                MacOsPreviewFeature::MarkdownRenderingSurface,
+                PreviewFeatureCoverageLane::SharedRender,
+            ),
+            PreviewFeatureCoverageRecord::new(
+                MacOsPreviewFeature::RuntimeDiagnosticsCoverage,
+                PreviewFeatureCoverageLane::WindowsAdapter,
+            ),
+        ]]));
         assert_eq!(
             PreviewFeatureCoverageLane::SharedRender.label(),
             "shared-render"
@@ -2097,6 +2276,30 @@ mod tests {
         );
         assert!(!ValidationCaptureProvenance::Synthetic.satisfies_real_machine_evidence());
         assert_eq!(ValidationCaptureProvenance::Synthetic.label(), "synthetic");
+    }
+
+    #[test]
+    fn validation_host_environment_formats_a_target_label() {
+        let environment = ValidationHostEnvironment {
+            platform_id: PlatformId::WindowsExplorer,
+            operating_system: "Windows 11".to_string(),
+            operating_system_version: Some("24H2".to_string()),
+            operating_system_build: Some("26100".to_string()),
+            file_manager: Some("Explorer".to_string()),
+            host_name: Some("FASTMD-WIN11".to_string()),
+            architecture: Some("x64".to_string()),
+            captured_at_utc: Some("2026-04-08T09:14:00Z".to_string()),
+        };
+
+        assert_eq!(
+            environment.operating_system_label(),
+            "Windows 11 24H2 (build 26100)"
+        );
+        assert_eq!(
+            environment.target_label(),
+            "Windows 11 24H2 (build 26100) + Explorer"
+        );
+        assert_roundtrip(&environment);
     }
 
     #[test]
@@ -2205,6 +2408,16 @@ mod tests {
         assert_roundtrip(&close_event);
         assert_roundtrip(&diagnostics_command);
         assert_roundtrip(&diagnostics_event);
+        assert_roundtrip(&ValidationHostEnvironment {
+            platform_id: PlatformId::WindowsExplorer,
+            operating_system: "Windows 11".to_string(),
+            operating_system_version: Some("24H2".to_string()),
+            operating_system_build: Some("26100".to_string()),
+            file_manager: Some("Explorer".to_string()),
+            host_name: Some("FASTMD-WIN11".to_string()),
+            architecture: Some("x64".to_string()),
+            captured_at_utc: Some("2026-04-08T09:14:00Z".to_string()),
+        });
         assert_roundtrip(&error);
     }
 

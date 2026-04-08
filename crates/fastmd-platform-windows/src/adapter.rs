@@ -37,6 +37,7 @@ pub enum HostApi {
     CoordinateTranslation,
     PreviewWindowPlacement,
     RuntimeDiagnostics,
+    ValidationEvidenceCapture,
 }
 
 /// Why a host API seam is not executable yet from this crate.

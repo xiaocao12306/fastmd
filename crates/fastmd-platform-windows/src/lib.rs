@@ -29,7 +29,7 @@ pub use evidence::{
     build_windows_validation_evidence_report, EvidenceSectionStatus, ValidationEvidenceSection,
     WindowsValidationEvidenceReport,
 };
-pub use fastmd_contracts::ValidationCaptureProvenance;
+pub use fastmd_contracts::{ValidationCaptureProvenance, ValidationHostEnvironment};
 pub use filter::{
     AcceptedMarkdownPath, HoverCandidate, HoverCandidateRejection, HoverCandidateSource,
     WindowsMarkdownFilter,

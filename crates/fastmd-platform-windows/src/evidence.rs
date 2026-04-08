@@ -1,10 +1,18 @@
 use std::collections::BTreeSet;
+#[cfg(target_os = "windows")]
+use std::io::Write;
+#[cfg(target_os = "windows")]
+use std::process::{Command, Stdio};
 
 use fastmd_contracts::{
-    macos_preview_feature_list, preview_feature_coverage_lanes,
-    preview_feature_coverage_matches_reference, MacOsPreviewFeature, PreviewFeatureCoverageLane,
-    ScreenPoint, ValidationCaptureProvenance,
+    macos_preview_feature_list, preview_feature_coverage_from_records,
+    preview_feature_coverage_lanes, preview_feature_coverage_record_gaps_against_reference,
+    preview_feature_coverage_records_match_reference, MacOsPreviewFeature, PlatformId,
+    PreviewFeatureCoverageLane, ScreenPoint, ValidationCaptureProvenance,
+    ValidationHostEnvironment,
 };
+#[cfg(target_os = "windows")]
+use serde::Deserialize;
 
 use crate::{
     windows_preview_loop_feature_coverage_records, FrontmostSurfaceProbe, HoveredItemProbeOutcome,
@@ -24,6 +32,38 @@ const PARITY_CHECKLIST_ITEMS: [&str; 1] = [
     "Record Windows-specific validation evidence proving one-to-one parity with macOS for each feature above",
 ];
 const WINDOWS_VALIDATION_REPORT_TARGET: &str = "Windows 11 + Explorer only";
+#[cfg(target_os = "windows")]
+const WINDOWS_VALIDATION_ENVIRONMENT_SCRIPT: &str = r#"
+$os = Get-CimInstance Win32_OperatingSystem
+
+[pscustomobject]@{
+    operating_system = if ($os.Caption) { [string]$os.Caption } else { "Windows" }
+    operating_system_version = if ($os.Version) { [string]$os.Version } else { $null }
+    operating_system_build = if ($os.BuildNumber) { [string]$os.BuildNumber } else { $null }
+    file_manager = "Explorer"
+    host_name = if ($env:COMPUTERNAME) { [string]$env:COMPUTERNAME } else { $null }
+    architecture = if ($os.OSArchitecture) { [string]$os.OSArchitecture } else { $null }
+    captured_at_utc = (Get-Date).ToUniversalTime().ToString("o")
+} | ConvertTo-Json -Compress
+"#;
+
+#[cfg(target_os = "windows")]
+#[derive(Debug, Deserialize)]
+struct ValidationEnvironmentPayload {
+    operating_system: String,
+    #[serde(default)]
+    operating_system_version: Option<String>,
+    #[serde(default)]
+    operating_system_build: Option<String>,
+    #[serde(default)]
+    file_manager: Option<String>,
+    #[serde(default)]
+    host_name: Option<String>,
+    #[serde(default)]
+    architecture: Option<String>,
+    #[serde(default)]
+    captured_at_utc: Option<String>,
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum EvidenceSectionStatus {
@@ -58,6 +98,7 @@ pub struct ValidationEvidenceSection {
 pub struct WindowsValidationEvidenceReport {
     pub target: &'static str,
     pub reference_surface: &'static str,
+    pub environment: ValidationHostEnvironment,
     pub provenance: ValidationCaptureProvenance,
     pub sections: Vec<ValidationEvidenceSection>,
 }
@@ -97,6 +138,23 @@ impl WindowsValidationEvidenceReport {
             String::new(),
             format!("- Target: `{}`", self.target),
             format!("- Reference surface: `{}`", self.reference_surface),
+            format!(
+                "- Platform id: `{}`",
+                platform_id_label(self.environment.platform_id)
+            ),
+            format!("- Live host target: `{}`", self.environment.target_label()),
+            format!(
+                "- Captured at (UTC): `{}`",
+                option_label(self.environment.captured_at_utc.as_deref())
+            ),
+            format!(
+                "- Host machine: `{}`",
+                option_label(self.environment.host_name.as_deref())
+            ),
+            format!(
+                "- Host architecture: `{}`",
+                option_label(self.environment.architecture.as_deref())
+            ),
             format!("- Evidence provenance: `{}`", self.provenance.label()),
             format!(
                 "- Layer 6 closure readiness: `{}`",
@@ -142,6 +200,7 @@ impl WindowsValidationEvidenceReport {
 }
 
 pub fn build_windows_validation_evidence_report(
+    environment: ValidationHostEnvironment,
     provenance: ValidationCaptureProvenance,
     frontmost: &FrontmostSurfaceProbe,
     hover: Option<&HoveredItemProbeOutcome>,
@@ -156,6 +215,7 @@ pub fn build_windows_validation_evidence_report(
     WindowsValidationEvidenceReport {
         target: WINDOWS_VALIDATION_REPORT_TARGET,
         reference_surface: MACOS_REFERENCE_BEHAVIOR.reference_surface,
+        environment,
         provenance,
         sections: vec![
             frontmost_section,
@@ -170,6 +230,14 @@ pub fn build_windows_validation_evidence_report(
 pub fn capture_live_windows_validation_evidence_report(
 ) -> Result<WindowsValidationEvidenceReport, AdapterError> {
     let adapter = ExplorerAdapter::new();
+    let environment = probe_windows_validation_environment().map_err(|message| {
+        AdapterError::HostProbeFailed {
+            api: crate::HostApi::ValidationEvidenceCapture,
+            parity_requirement:
+                "Windows validation evidence capture requires explicit live host metadata",
+            message,
+        }
+    })?;
     let translation = adapter.translate_coordinates(ScreenPoint::new(0.0, 0.0))?;
     let frontmost = adapter.probe_frontmost_surface()?;
     let hover = match frontmost.detected_surface.as_ref() {
@@ -178,6 +246,7 @@ pub fn capture_live_windows_validation_evidence_report(
     };
 
     Ok(build_windows_validation_evidence_report(
+        environment,
         ValidationCaptureProvenance::RealHostSession,
         &frontmost,
         hover.as_ref(),
@@ -344,6 +413,15 @@ fn build_coordinate_section(
         ),
         translation.notes.to_string(),
     ];
+    for monitor in &translation.monitors {
+        let monitor_name = monitor.name.as_deref().unwrap_or(monitor.id.as_str());
+        details.push(format!(
+            "Monitor `{monitor_name}`: frame `{}`, visible frame `{}`, primary `{}`",
+            format_rect(&monitor.frame),
+            format_rect(&monitor.visible_frame),
+            monitor.is_primary
+        ));
+    }
     append_non_live_capture_note(&mut details, provenance);
 
     ValidationEvidenceSection {
@@ -358,15 +436,9 @@ fn build_feature_coverage_section(
     prerequisite_sections: &[&ValidationEvidenceSection],
 ) -> ValidationEvidenceSection {
     let coverage_records = windows_preview_loop_feature_coverage_records();
-    let covered_features: Vec<_> = coverage_records
-        .iter()
-        .map(|record| record.feature)
-        .collect::<BTreeSet<_>>()
-        .into_iter()
-        .collect();
+    let covered_features = preview_feature_coverage_from_records(&coverage_records);
     let covered_set: BTreeSet<_> = covered_features.iter().copied().collect();
-    let matches_reference =
-        preview_feature_coverage_matches_reference(&[covered_features.as_slice()]);
+    let matches_reference = preview_feature_coverage_records_match_reference(&[&coverage_records]);
     let blocking_sections: Vec<_> = prerequisite_sections
         .iter()
         .filter(|section| !section.status.is_pass())
@@ -384,11 +456,7 @@ fn build_feature_coverage_section(
             "Shared contracts, shared core, shared render, and the Windows preview loop cover the full macOS reference feature list in automated validation.".to_string(),
         );
     } else {
-        let missing: Vec<_> = macos_preview_feature_list()
-            .iter()
-            .copied()
-            .filter(|feature| !covered_set.contains(feature))
-            .collect();
+        let missing = preview_feature_coverage_record_gaps_against_reference(&[&coverage_records]);
         details.push(format!(
             "Missing automated feature coverage: {}.",
             feature_label_list(&missing)
@@ -434,6 +502,89 @@ fn build_feature_coverage_section(
     }
 }
 
+#[cfg(target_os = "windows")]
+fn probe_windows_validation_environment() -> Result<ValidationHostEnvironment, String> {
+    let mut child = Command::new("powershell.exe")
+        .arg("-NoProfile")
+        .arg("-NonInteractive")
+        .arg("-Command")
+        .arg("-")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|error| format!("failed to launch validation environment probe: {error}"))?;
+
+    {
+        let Some(mut stdin) = child.stdin.take() else {
+            return Err(
+                "PowerShell stdin was not available for the validation environment probe."
+                    .to_string(),
+            );
+        };
+
+        stdin
+            .write_all(WINDOWS_VALIDATION_ENVIRONMENT_SCRIPT.as_bytes())
+            .and_then(|_| stdin.flush())
+            .map_err(|error| {
+                format!("failed to write validation environment probe script: {error}")
+            })?;
+    }
+
+    let output = child
+        .wait_with_output()
+        .map_err(|error| format!("failed to wait for validation environment probe: {error}"))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        return Err(if stderr.is_empty() {
+            format!(
+                "validation environment probe exited with status {:?} without stderr output",
+                output.status.code()
+            )
+        } else {
+            format!(
+                "validation environment probe exited with status {:?}: {stderr}",
+                output.status.code()
+            )
+        });
+    }
+
+    parse_windows_validation_environment(&String::from_utf8_lossy(&output.stdout))
+}
+
+#[cfg(target_os = "windows")]
+fn parse_windows_validation_environment(
+    raw_output: &str,
+) -> Result<ValidationHostEnvironment, String> {
+    let trimmed_output = raw_output.trim().trim_start_matches('\u{feff}').trim();
+    if trimmed_output.is_empty() {
+        return Err("validation environment probe returned no JSON output".to_string());
+    }
+
+    let payload: ValidationEnvironmentPayload = serde_json::from_str(trimmed_output)
+        .map_err(|error| format!("validation environment probe returned invalid JSON: {error}"))?;
+
+    let operating_system = payload.operating_system.trim();
+    if operating_system.is_empty() {
+        return Err(
+            "validation environment probe did not include an operating system name".to_string(),
+        );
+    }
+
+    Ok(ValidationHostEnvironment {
+        platform_id: PlatformId::WindowsExplorer,
+        operating_system: operating_system.to_string(),
+        operating_system_version: normalize_optional_string(payload.operating_system_version),
+        operating_system_build: normalize_optional_string(payload.operating_system_build),
+        file_manager: normalize_optional_string(payload.file_manager)
+            .or_else(|| Some("Explorer".to_string())),
+        host_name: normalize_optional_string(payload.host_name),
+        architecture: normalize_optional_string(payload.architecture),
+        captured_at_utc: normalize_optional_string(payload.captured_at_utc),
+    })
+}
+
 fn hover_scope_label(scope: fastmd_contracts::HoverResolutionScope) -> &'static str {
     match scope {
         fastmd_contracts::HoverResolutionScope::ExactItemUnderPointer => "exact-item-under-pointer",
@@ -449,6 +600,14 @@ fn front_surface_kind_label(kind: fastmd_contracts::FrontSurfaceKind) -> &'stati
         fastmd_contracts::FrontSurfaceKind::ExplorerListView => "explorer-list-view",
         fastmd_contracts::FrontSurfaceKind::GnomeFilesListView => "gnome-files-list-view",
         fastmd_contracts::FrontSurfaceKind::Other => "other",
+    }
+}
+
+fn platform_id_label(platform_id: PlatformId) -> &'static str {
+    match platform_id {
+        PlatformId::MacosFinder => "macos-finder",
+        PlatformId::WindowsExplorer => "windows-explorer",
+        PlatformId::UbuntuGnomeFiles => "ubuntu-gnome-files",
     }
 }
 
@@ -481,6 +640,24 @@ fn coverage_lane_label_list(lanes: &[PreviewFeatureCoverageLane]) -> String {
         .map(|lane| lane.label())
         .collect::<Vec<_>>()
         .join(", ")
+}
+
+#[cfg(target_os = "windows")]
+fn normalize_optional_string(value: Option<String>) -> Option<String> {
+    value.and_then(|value| {
+        let trimmed = value.trim();
+        if trimmed.is_empty() {
+            None
+        } else {
+            Some(trimmed.to_string())
+        }
+    })
+}
+
+fn option_label(value: Option<&str>) -> &str {
+    value
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or("unknown")
 }
 
 fn evidence_status_for_probe(
@@ -517,8 +694,8 @@ mod tests {
     use std::time::{SystemTime, UNIX_EPOCH};
 
     use fastmd_contracts::{
-        FrontSurfaceKind, HoverResolutionScope, MonitorMetadata, ScreenPoint, ScreenRect,
-        ValidationCaptureProvenance,
+        FrontSurfaceKind, HoverResolutionScope, MonitorMetadata, PlatformId, ScreenPoint,
+        ScreenRect, ValidationCaptureProvenance, ValidationHostEnvironment,
     };
 
     use super::{
@@ -581,6 +758,19 @@ mod tests {
         }
     }
 
+    fn sample_environment() -> ValidationHostEnvironment {
+        ValidationHostEnvironment {
+            platform_id: PlatformId::WindowsExplorer,
+            operating_system: "Windows 11 Pro".to_string(),
+            operating_system_version: Some("24H2".to_string()),
+            operating_system_build: Some("26100".to_string()),
+            file_manager: Some("Explorer".to_string()),
+            host_name: Some("FASTMD-WIN11".to_string()),
+            architecture: Some("64-bit".to_string()),
+            captured_at_utc: Some("2026-04-08T09:14:00Z".to_string()),
+        }
+    }
+
     fn parity_compliant_report(
         provenance: ValidationCaptureProvenance,
     ) -> WindowsValidationEvidenceReport {
@@ -610,6 +800,7 @@ mod tests {
         });
 
         build_windows_validation_evidence_report(
+            sample_environment(),
             provenance,
             &frontmost,
             Some(&hover),
@@ -662,6 +853,7 @@ mod tests {
             "Notepad",
         ));
         let report = build_windows_validation_evidence_report(
+            sample_environment(),
             ValidationCaptureProvenance::RealHostSession,
             &frontmost,
             None,
@@ -693,6 +885,13 @@ mod tests {
         assert!(markdown.contains("## Multi-Monitor Coordinate Handling"));
         assert!(markdown.contains("## Automated macOS-Parity Feature Coverage"));
         assert!(markdown.contains("- Evidence provenance: `real-host-session`"));
+        assert!(markdown.contains("- Platform id: `windows-explorer`"));
+        assert!(
+            markdown.contains("- Live host target: `Windows 11 Pro 24H2 (build 26100) + Explorer`")
+        );
+        assert!(markdown.contains("- Captured at (UTC): `2026-04-08T09:14:00Z`"));
+        assert!(markdown.contains("- Host machine: `FASTMD-WIN11`"));
+        assert!(markdown.contains("- Host architecture: `64-bit`"));
         assert!(markdown.contains("- Layer 6 closure readiness: `ready-to-close`"));
         assert!(markdown.contains(
             "- Ready checklist item: Record validation evidence for frontmost Explorer detection on a real Windows 11 machine"
@@ -715,6 +914,7 @@ mod tests {
         ));
         assert!(markdown.contains("Accepted Markdown path: `"));
         assert!(markdown.contains("Selection mode: `containing visible frame`"));
+        assert!(markdown.contains("Monitor `Primary monitor`: frame `x=0.0, y=0.0, width=1920.0, height=1080.0`, visible frame `x=0.0, y=40.0, width=1920.0, height=1040.0`, primary `true`"));
     }
 
     #[test]
@@ -761,6 +961,7 @@ mod tests {
             "Notepad",
         ));
         let report = build_windows_validation_evidence_report(
+            sample_environment(),
             ValidationCaptureProvenance::RealHostSession,
             &frontmost,
             None,
