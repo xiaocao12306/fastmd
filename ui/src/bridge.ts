@@ -11,6 +11,7 @@ import type {
   HotInteractionSurface,
   LinuxEditLifecycleDiagnostic,
   LinuxFrontmostGateDiagnostic,
+  LinuxValidationChecklistStatus,
   LinuxParityCoverage,
   LinuxPreviewLoopValidation,
   LinuxProbePlans,
@@ -226,6 +227,16 @@ export function readLinuxValidationEvidenceLatestReportByDisplayServer(
     readLinuxValidationEvidenceLatestReports(capabilities).find(
       (report) => report.displayServer === displayServer,
     ) ?? null
+  );
+}
+
+export function readLinuxValidationEvidenceLatestReportChecklistStatuses(
+  capabilities: HostCapabilities,
+  displayServer: string,
+): LinuxValidationChecklistStatus[] {
+  return (
+    readLinuxValidationEvidenceLatestReportByDisplayServer(capabilities, displayServer)
+      ?.checklistStatuses ?? []
   );
 }
 

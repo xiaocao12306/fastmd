@@ -218,6 +218,14 @@ describe("FastMD shared preview shell", () => {
       crossSessionCapturedDisplayServers: [],
       crossSessionMissingDisplayServers: ["wayland", "x11"],
       crossSessionReadyDisplayServerReports: [],
+      checklistStatuses: [
+        {
+          checklistItem:
+            "Validate frontmost Nautilus detection on a real Ubuntu 24.04 Wayland session",
+          sectionTitle: "Frontmost Nautilus evidence",
+          status: "pass",
+        },
+      ],
       readyChecklistItems: [
         "Validate frontmost Nautilus detection on a real Ubuntu 24.04 Wayland session",
       ],
@@ -267,6 +275,14 @@ describe("FastMD shared preview shell", () => {
         crossSessionCapturedDisplayServers: [],
         crossSessionMissingDisplayServers: ["wayland", "x11"],
         crossSessionReadyDisplayServerReports: [],
+        checklistStatuses: [
+          {
+            checklistItem:
+              "Validate frontmost Nautilus detection on a real Ubuntu 24.04 Wayland session",
+            sectionTitle: "Frontmost Nautilus evidence",
+            status: "pass",
+          },
+        ],
         readyChecklistItems: [
           "Validate frontmost Nautilus detection on a real Ubuntu 24.04 Wayland session",
         ],
@@ -328,6 +344,14 @@ describe("FastMD shared preview shell", () => {
               "/repo/Docs/Test_Logs/ubuntu-validation-report-wayland-1710000000000.md",
             reportJsonPath:
               "/repo/Docs/Test_Logs/ubuntu-validation-report-wayland-1710000000000.json",
+            checklistStatuses: [
+              {
+                checklistItem:
+                  "Validate frontmost Nautilus detection on a real Ubuntu 24.04 Wayland session",
+                sectionTitle: "Frontmost Nautilus evidence",
+                status: "pass",
+              },
+            ],
             readyChecklistItems: [
               "Validate frontmost Nautilus detection on a real Ubuntu 24.04 Wayland session",
             ],
@@ -407,6 +431,14 @@ describe("FastMD shared preview shell", () => {
                 "/repo/Docs/Test_Logs/ubuntu-validation-report-wayland-1710000000000.md",
               reportJsonPath:
                 "/repo/Docs/Test_Logs/ubuntu-validation-report-wayland-1710000000000.json",
+              checklistStatuses: [
+                {
+                  checklistItem:
+                    "Validate frontmost Nautilus detection on a real Ubuntu 24.04 Wayland session",
+                  sectionTitle: "Frontmost Nautilus evidence",
+                  status: "pass",
+                },
+              ],
               readyChecklistItems: [
                 "Validate frontmost Nautilus detection on a real Ubuntu 24.04 Wayland session",
               ],
@@ -442,6 +474,16 @@ describe("FastMD shared preview shell", () => {
     expect(shell?.dataset.linuxValidationEvidenceNote).toContain("Wayland and X11");
     expect(shell?.dataset.linuxValidationEvidenceWaylandReportMarkdownPath).toContain(
       "ubuntu-validation-report-wayland",
+    );
+    expect(shell?.dataset.linuxValidationEvidenceWaylandChecklistStatuses).toBe(
+      JSON.stringify([
+        {
+          checklistItem:
+            "Validate frontmost Nautilus detection on a real Ubuntu 24.04 Wayland session",
+          sectionTitle: "Frontmost Nautilus evidence",
+          status: "pass",
+        },
+      ]),
     );
     expect(shell?.dataset.linuxValidationEvidenceWaylandReadyChecklistItems).toBe(
       JSON.stringify([

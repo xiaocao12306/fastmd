@@ -18,6 +18,7 @@ import {
   readLinuxRuntimeDiagnostics,
   readLinuxValidationEvidence,
   readLinuxValidationEvidenceLatestReportByDisplayServer,
+  readLinuxValidationEvidenceLatestReportChecklistStatuses,
   readLinuxValidationEvidenceLatestReports,
   readPreviewWindowDragSurface,
   readSharedRenderingPipeline,
@@ -661,6 +662,7 @@ export class PreviewShellApp {
       delete this.shellNode.dataset[`${prefix}ReadyToCloseDisplayServerReport`];
       delete this.shellNode.dataset[`${prefix}ReportMarkdownPath`];
       delete this.shellNode.dataset[`${prefix}ReportJsonPath`];
+      delete this.shellNode.dataset[`${prefix}ChecklistStatuses`];
       delete this.shellNode.dataset[`${prefix}ReadyChecklistItems`];
       delete this.shellNode.dataset[`${prefix}BlockedChecklistItems`];
     };
@@ -727,6 +729,15 @@ export class PreviewShellApp {
       );
       this.setShellData(`${prefix}ReportMarkdownPath`, report.reportMarkdownPath);
       this.setShellData(`${prefix}ReportJsonPath`, report.reportJsonPath);
+      this.setShellData(
+        `${prefix}ChecklistStatuses`,
+        JSON.stringify(
+          readLinuxValidationEvidenceLatestReportChecklistStatuses(
+            this.hostCapabilities,
+            displayServer,
+          ),
+        ),
+      );
       this.setShellData(
         `${prefix}ReadyChecklistItems`,
         JSON.stringify(report.readyChecklistItems),

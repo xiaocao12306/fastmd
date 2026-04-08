@@ -163,6 +163,7 @@ export interface LinuxValidationEvidenceReport {
   readyToCloseDisplayServerReport: boolean;
   reportMarkdownPath?: string | null;
   reportJsonPath: string;
+  checklistStatuses: LinuxValidationChecklistStatus[];
   readyChecklistItems: string[];
   blockedChecklistItems: string[];
 }
@@ -274,6 +275,12 @@ export interface LinuxValidationSection {
   details: string[];
 }
 
+export interface LinuxValidationChecklistStatus {
+  checklistItem: string;
+  sectionTitle: string;
+  status: LinuxValidationSectionStatus;
+}
+
 export interface LinuxValidationReport {
   target: string;
   referenceSurface: string;
@@ -287,6 +294,7 @@ export interface LinuxValidationReport {
   crossSessionCapturedDisplayServers: string[];
   crossSessionMissingDisplayServers: string[];
   crossSessionReadyDisplayServerReports: string[];
+  checklistStatuses: LinuxValidationChecklistStatus[];
   readyChecklistItems: string[];
   blockedChecklistItems: string[];
   sections: LinuxValidationSection[];

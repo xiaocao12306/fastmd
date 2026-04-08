@@ -214,6 +214,7 @@ struct LinuxValidationEvidenceReportPayload {
     ready_to_close_display_server_report: bool,
     report_markdown_path: Option<String>,
     report_json_path: String,
+    checklist_statuses: Vec<LinuxValidationChecklistStatusPayload>,
     ready_checklist_items: Vec<String>,
     blocked_checklist_items: Vec<String>,
 }
@@ -338,6 +339,14 @@ struct LinuxValidationSectionPayload {
 
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+struct LinuxValidationChecklistStatusPayload {
+    checklist_item: String,
+    section_title: String,
+    status: String,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct LinuxValidationReportPayload {
     target: String,
     reference_surface: String,
@@ -355,6 +364,8 @@ struct LinuxValidationReportPayload {
     cross_session_missing_display_servers: Vec<String>,
     #[serde(default)]
     cross_session_ready_display_server_reports: Vec<String>,
+    #[serde(default)]
+    checklist_statuses: Vec<LinuxValidationChecklistStatusPayload>,
     ready_checklist_items: Vec<String>,
     blocked_checklist_items: Vec<String>,
     sections: Vec<LinuxValidationSectionPayload>,
@@ -720,6 +731,7 @@ fn load_linux_validation_report_artifact(
         serde_json::from_str(&fs::read_to_string(path).ok()?).ok()?;
     let display_server = report.display_server.clone();
     let report_markdown_path = path.with_extension("md");
+    let checklist_statuses = linux_validation_report_checklist_statuses(&report);
 
     Some(LinuxValidationEvidenceReportPayload {
         display_server,
@@ -729,6 +741,7 @@ fn load_linux_validation_report_artifact(
             .is_file()
             .then(|| path_string(&report_markdown_path)),
         report_json_path: path_string(path),
+        checklist_statuses,
         ready_checklist_items: report.ready_checklist_items.clone(),
         blocked_checklist_items: report.blocked_checklist_items.clone(),
     })
@@ -1049,6 +1062,35 @@ fn linux_validation_notes_payload() -> Vec<LinuxValidationNotePayload> {
             note: note.note.to_owned(),
         })
         .collect()
+}
+
+fn linux_validation_checklist_statuses_from_sections(
+    sections: &[LinuxValidationSectionPayload],
+) -> Vec<LinuxValidationChecklistStatusPayload> {
+    sections
+        .iter()
+        .flat_map(|section| {
+            section
+                .checklist_items
+                .iter()
+                .cloned()
+                .map(|checklist_item| LinuxValidationChecklistStatusPayload {
+                    checklist_item,
+                    section_title: section.title.clone(),
+                    status: section.status.clone(),
+                })
+        })
+        .collect()
+}
+
+fn linux_validation_report_checklist_statuses(
+    report: &LinuxValidationReportPayload,
+) -> Vec<LinuxValidationChecklistStatusPayload> {
+    if report.checklist_statuses.is_empty() {
+        linux_validation_checklist_statuses_from_sections(&report.sections)
+    } else {
+        report.checklist_statuses.clone()
+    }
 }
 
 fn build_linux_frontmost_validation_section(
@@ -1380,6 +1422,7 @@ fn build_linux_automated_parity_section(
 }
 
 fn linux_validation_report_markdown(report: &LinuxValidationReportPayload) -> String {
+    let checklist_statuses = linux_validation_report_checklist_statuses(report);
     let implemented_notes = report
         .notes
         .iter()
@@ -1464,6 +1507,20 @@ fn linux_validation_report_markdown(report: &LinuxValidationReportPayload) -> St
         ),
         String::new(),
     ];
+
+    if !checklist_statuses.is_empty() {
+        lines.push("## Checklist Status Matrix".to_owned());
+        lines.push(String::new());
+        for checklist_status in &checklist_statuses {
+            lines.push(format!(
+                "- [{}] {} ({})",
+                checklist_status.status,
+                checklist_status.checklist_item,
+                checklist_status.section_title
+            ));
+        }
+        lines.push(String::new());
+    }
 
     for checklist_item in &report.ready_checklist_items {
         lines.push(format!("- Ready checklist item: {checklist_item}"));
@@ -1586,6 +1643,7 @@ fn build_linux_validation_report_payload(
         monitor_section.into_payload(),
         automated_parity_section.into_payload(),
     ];
+    let checklist_statuses = linux_validation_checklist_statuses_from_sections(&sections);
     let notes = linux_validation_notes_payload();
     let mut report = LinuxValidationReportPayload {
         target: linux_validation_target(host_capabilities),
@@ -1600,6 +1658,7 @@ fn build_linux_validation_report_payload(
         cross_session_captured_display_servers: captured_display_servers,
         cross_session_missing_display_servers: missing_display_servers,
         cross_session_ready_display_server_reports: ready_display_server_reports,
+        checklist_statuses,
         ready_checklist_items,
         blocked_checklist_items,
         sections,

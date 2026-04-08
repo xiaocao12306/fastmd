@@ -21,6 +21,7 @@ import {
   exportDesktopShellValidationArtifacts,
   listenToShellState,
   readLinuxFrontmostTextInputState,
+  readLinuxValidationEvidenceLatestReportChecklistStatuses,
   readLinuxValidationEvidenceLatestReportByDisplayServer,
   readLinuxHoveredItemPresentationMode,
   startPreviewWindowDrag,
@@ -80,6 +81,14 @@ describe("FastMD Tauri bridge", () => {
       crossSessionCapturedDisplayServers: [],
       crossSessionMissingDisplayServers: ["wayland", "x11"],
       crossSessionReadyDisplayServerReports: [],
+      checklistStatuses: [
+        {
+          checklistItem:
+            "Validate frontmost Nautilus detection on a real Ubuntu 24.04 Wayland session",
+          sectionTitle: "Frontmost Nautilus evidence",
+          status: "pass",
+        },
+      ],
       readyChecklistItems: [],
       blockedChecklistItems: [],
       sections: [],
@@ -126,6 +135,14 @@ describe("FastMD Tauri bridge", () => {
               "/repo/Docs/Test_Logs/ubuntu-validation-report-wayland-1710000000000.md",
             reportJsonPath:
               "/repo/Docs/Test_Logs/ubuntu-validation-report-wayland-1710000000000.json",
+            checklistStatuses: [
+              {
+                checklistItem:
+                  "Validate frontmost Nautilus detection on a real Ubuntu 24.04 Wayland session",
+                sectionTitle: "Frontmost Nautilus evidence",
+                status: "pass",
+              },
+            ],
             readyChecklistItems: [
               "Validate frontmost Nautilus detection on a real Ubuntu 24.04 Wayland session",
             ],
@@ -286,6 +303,14 @@ describe("FastMD Tauri bridge", () => {
                 "/repo/Docs/Test_Logs/ubuntu-validation-report-wayland-1710000000000.md",
               reportJsonPath:
                 "/repo/Docs/Test_Logs/ubuntu-validation-report-wayland-1710000000000.json",
+              checklistStatuses: [
+                {
+                  checklistItem:
+                    "Validate frontmost Nautilus detection on a real Ubuntu 24.04 Wayland session",
+                  sectionTitle: "Frontmost Nautilus evidence",
+                  status: "pass",
+                },
+              ],
               readyChecklistItems: [
                 "Validate frontmost Nautilus detection on a real Ubuntu 24.04 Wayland session",
               ],
@@ -305,6 +330,72 @@ describe("FastMD Tauri bridge", () => {
     ]);
     expect(report?.blockedChecklistItems).toEqual([
       "Record Ubuntu-specific validation evidence proving one-to-one parity with macOS for each feature above",
+    ]);
+  });
+
+  it("extracts the cached checklist-status matrix for one display server", () => {
+    const checklistStatuses = readLinuxValidationEvidenceLatestReportChecklistStatuses(
+      {
+        ...demoBootstrapPayload.hostCapabilities,
+        linuxValidationEvidence: {
+          status: "cross-session-review-required",
+          checklistItem:
+            "Record Ubuntu-specific validation evidence proving one-to-one parity with macOS for each feature above",
+          note:
+            "Single-session validation reports can only prove one live Ubuntu display server at a time.",
+          requiredDisplayServers: ["wayland", "x11"],
+          capturedDisplayServers: ["wayland"],
+          missingDisplayServers: ["x11"],
+          readyDisplayServerReports: ["wayland"],
+          latestReports: [
+            {
+              displayServer: "wayland",
+              capturedAtUnixMs: 1710000000000,
+              readyToCloseDisplayServerReport: true,
+              reportMarkdownPath:
+                "/repo/Docs/Test_Logs/ubuntu-validation-report-wayland-1710000000000.md",
+              reportJsonPath:
+                "/repo/Docs/Test_Logs/ubuntu-validation-report-wayland-1710000000000.json",
+              checklistStatuses: [
+                {
+                  checklistItem:
+                    "Validate frontmost Nautilus detection on a real Ubuntu 24.04 Wayland session",
+                  sectionTitle: "Frontmost Nautilus evidence",
+                  status: "pass",
+                },
+                {
+                  checklistItem:
+                    "Validate exact hovered-item resolution on a real Ubuntu 24.04 Wayland session",
+                  sectionTitle: "Hovered Markdown evidence",
+                  status: "fail",
+                },
+              ],
+              readyChecklistItems: [
+                "Validate frontmost Nautilus detection on a real Ubuntu 24.04 Wayland session",
+              ],
+              blockedChecklistItems: [
+                "Record Ubuntu-specific validation evidence proving one-to-one parity with macOS for each feature above",
+              ],
+            },
+          ],
+        },
+      },
+      "wayland",
+    );
+
+    expect(checklistStatuses).toEqual([
+      {
+        checklistItem:
+          "Validate frontmost Nautilus detection on a real Ubuntu 24.04 Wayland session",
+        sectionTitle: "Frontmost Nautilus evidence",
+        status: "pass",
+      },
+      {
+        checklistItem:
+          "Validate exact hovered-item resolution on a real Ubuntu 24.04 Wayland session",
+        sectionTitle: "Hovered Markdown evidence",
+        status: "fail",
+      },
     ]);
   });
 });
