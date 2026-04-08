@@ -65,6 +65,7 @@ export const demoBootstrapPayload: BootstrapPayload = {
       ],
       widthTiersPx: WIDTH_TIERS,
       aspectRatio: 4 / 3,
+      renderPipeline: "offscreen-stage-then-atomic-swap",
     },
     linuxProbePlans: null,
     linuxPreviewPlacement: null,

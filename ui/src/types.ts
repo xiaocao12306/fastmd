@@ -84,6 +84,7 @@ export interface SharedRenderingSurface {
   supportedFeatures: MarkdownFeature[];
   widthTiersPx: number[];
   aspectRatio: number;
+  renderPipeline: string;
 }
 
 export interface LinuxProbePlans {

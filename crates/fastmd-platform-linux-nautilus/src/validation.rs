@@ -308,6 +308,11 @@ pub fn crate_slice_validation_notes() -> Vec<ValidationNote> {
             note: "The Ubuntu shell now exposes the fastmd-render Stage 2 rendering contract to the shared frontend, and fastmd-render already pins ui/src/markdown.ts, ui/src/styles.css, and ui/src/app.ts to the current macOS MarkdownRenderer runtime, typography, theme, layout, and compact chrome copy.",
         },
         ValidationNote {
+            item: "Optimize the Ubuntu preview rendering pipeline so Markdown display feels pre-rendered and visually non-blocking",
+            status: ValidationStatus::ImplementedInSlice,
+            note: "The shared desktop frontend now stages Markdown renders in an offscreen root and only swaps the visible preview DOM after Markdown, KaTeX, and Mermaid enhancement finish, so Ubuntu preview replacement keeps the current document visible instead of flashing a partial or blank intermediate state.",
+        },
+        ValidationNote {
             item: "Implement preview opening, rendering, editing, and close behavior parity",
             status: ValidationStatus::BlockedByLowerLayers,
             note: "Shared shell parity now covers macOS-matching hover-driven opening and replacement, the rendering surface, width tiers, work-area-based 4:3 placement, hint-chip chrome, Tab toggle, paged scrolling, and Escape close; outside-click/app-switch close parity and real Ubuntu session validation remain open.",

@@ -16,6 +16,7 @@ import {
   readLinuxRuntimeDiagnostics,
   readLinuxValidationEvidence,
   readLinuxValidationEvidenceLatestReports,
+  readSharedRenderingPipeline,
   readSharedRenderingSurface,
   listenToCloseRequests,
   listenToHostCapabilities,
@@ -114,6 +115,7 @@ export class PreviewShellApp {
   private shellState: ShellState;
   private hostCapabilities: HostCapabilities;
   private renderRoot!: HTMLElement;
+  private renderStageHost!: HTMLElement;
   private documentTitleNode!: HTMLElement;
   private widthLabelNode!: HTMLElement;
   private statusBannerNode!: HTMLElement;
@@ -125,6 +127,7 @@ export class PreviewShellApp {
   private pendingMarkdown: string | null = null;
   private transientStatus: string | null = null;
   private activeScrollFrame = 0;
+  private renderGeneration = 0;
   private unlistenFns: Array<() => void> = [];
   private readonly debugApi: DesktopShellDebugApi = {
     captureLinuxValidationReport: (anchor?: ScreenPoint) =>
@@ -291,6 +294,7 @@ export class PreviewShellApp {
           </div>
         </header>
         <div class="status-banner" data-role="status-banner" hidden></div>
+        <div class="render-stage-host" data-role="render-stage-host" aria-hidden="true"></div>
         <main class="render-root" data-role="render-root"></main>
       </div>
     `;
@@ -298,6 +302,9 @@ export class PreviewShellApp {
 
   private captureDom(): void {
     this.shellNode = this.container.querySelector(".shell") as HTMLElement;
+    this.renderStageHost = this.container.querySelector(
+      '[data-role="render-stage-host"]',
+    ) as HTMLElement;
     this.renderRoot = this.container.querySelector('[data-role="render-root"]') as HTMLElement;
     this.documentTitleNode = this.container.querySelector('[data-role="doc-title"]') as HTMLElement;
     this.widthLabelNode = this.container.querySelector('[data-role="width-label"]') as HTMLElement;
@@ -373,13 +380,48 @@ export class PreviewShellApp {
     if (pulseWidth) {
       this.pulseWidthTransition();
     }
+    const renderGeneration = ++this.renderGeneration;
+    const stagedRoot = this.createRenderStage(renderGeneration);
+    this.renderRoot.setAttribute("aria-busy", "true");
     await renderMarkdownDocument(
-      this.renderRoot,
+      stagedRoot,
       this.shellState.markdown,
       this.shellState.backgroundMode,
       this.shellState.contentBaseUrl ?? null,
     );
+    if (renderGeneration !== this.renderGeneration) {
+      stagedRoot.remove();
+      return;
+    }
+    this.renderRoot.replaceChildren(...Array.from(stagedRoot.childNodes));
+    this.clearRenderStages(stagedRoot);
+    stagedRoot.remove();
+    this.renderRoot.removeAttribute("aria-busy");
     this.maintainHotInteractionSurface();
+  }
+
+  private createRenderStage(renderGeneration: number): HTMLElement {
+    const stage = this.container.ownerDocument.createElement("div");
+    stage.className = "render-root render-stage-root";
+    stage.setAttribute("aria-hidden", "true");
+    stage.dataset.renderGeneration = String(renderGeneration);
+    const visibleWidth = Math.max(
+      this.renderRoot.getBoundingClientRect().width,
+      this.shellNode.getBoundingClientRect().width,
+      window.innerWidth,
+      1,
+    );
+    stage.style.width = `${Math.ceil(visibleWidth)}px`;
+    this.renderStageHost.appendChild(stage);
+    return stage;
+  }
+
+  private clearRenderStages(activeStage?: HTMLElement): void {
+    for (const child of Array.from(this.renderStageHost.children)) {
+      if (child !== activeStage) {
+        child.remove();
+      }
+    }
   }
 
   private syncCapabilitySummary(): void {
@@ -419,6 +461,7 @@ export class PreviewShellApp {
       delete this.shellNode.dataset.sharedRenderSurfaceFeatures;
       delete this.shellNode.dataset.sharedRenderSurfaceWidthTiers;
       delete this.shellNode.dataset.sharedRenderSurfaceAspectRatio;
+      delete this.shellNode.dataset.sharedRenderSurfacePipeline;
       return;
     }
 
@@ -430,6 +473,8 @@ export class PreviewShellApp {
     this.shellNode.dataset.sharedRenderSurfaceWidthTiers =
       renderingSurface.widthTiersPx.join(",");
     this.shellNode.dataset.sharedRenderSurfaceAspectRatio = String(renderingSurface.aspectRatio);
+    this.shellNode.dataset.sharedRenderSurfacePipeline =
+      readSharedRenderingPipeline(this.hostCapabilities) ?? renderingSurface.renderPipeline;
   }
 
   private syncLinuxProbePlanAttributes(): void {

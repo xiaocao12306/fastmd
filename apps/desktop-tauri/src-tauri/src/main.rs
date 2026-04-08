@@ -127,6 +127,7 @@ struct SharedRenderingSurfacePayload {
     supported_features: Vec<String>,
     width_tiers_px: Vec<u32>,
     aspect_ratio: f64,
+    render_pipeline: &'static str,
 }
 
 #[derive(Clone, Copy, Serialize, Deserialize, Debug, PartialEq)]
@@ -637,6 +638,7 @@ fn shared_rendering_surface_payload() -> Option<SharedRenderingSurfacePayload> {
             .collect(),
         width_tiers_px: contract.width_tiers_px,
         aspect_ratio: contract.aspect_ratio,
+        render_pipeline: "offscreen-stage-then-atomic-swap",
     })
 }
 

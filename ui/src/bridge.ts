@@ -172,6 +172,10 @@ export function readSharedRenderingSurface(
   return capabilities.sharedRenderingSurface ?? null;
 }
 
+export function readSharedRenderingPipeline(capabilities: HostCapabilities): string | null {
+  return capabilities.sharedRenderingSurface?.renderPipeline ?? null;
+}
+
 export function readLinuxRuntimeDiagnostics(
   capabilities: HostCapabilities,
 ): LinuxRuntimeDiagnostics | null {

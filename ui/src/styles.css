@@ -215,6 +215,18 @@ body.is-editing {
   transition: background-color 180ms ease, border-color 180ms ease, color 180ms ease;
 }
 
+.render-stage-host {
+  position: fixed;
+  left: -200vw;
+  top: 0;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  visibility: hidden;
+  pointer-events: none;
+  z-index: -1;
+}
+
 .render-root {
   flex: 1;
   padding: 18px;
@@ -229,6 +241,11 @@ body.is-editing {
     filter 360ms ease;
   transform-origin: top right;
   will-change: transform, opacity, filter;
+}
+
+.render-stage-root {
+  min-height: auto;
+  flex: none;
 }
 
 .md-block {

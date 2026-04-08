@@ -253,6 +253,10 @@ export async function renderMarkdownDocument(
     console.warn("FastMD shared renderer skipped KaTeX enhancement.", error);
   }
 
+  if (!root.querySelector(".mermaid")) {
+    return;
+  }
+
   try {
     mermaid.initialize({
       startOnLoad: false,

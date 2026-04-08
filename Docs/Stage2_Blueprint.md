@@ -661,7 +661,7 @@ Checklist reset rule:
 - [x] Implement the same close-on-app-switch behavior as macOS
 - [x] Implement the same close-on-Escape behavior as macOS
 - [x] Implement the same Markdown rendering surface as macOS
-- [ ] Optimize the Ubuntu preview rendering pipeline so Markdown display feels pre-rendered and visually non-blocking
+- [x] Optimize the Ubuntu preview rendering pipeline so Markdown display feels pre-rendered and visually non-blocking
 - [ ] Support `.md` preview triggering in non-list Nautilus presentation modes instead of list-view-only behavior
 - [ ] Allow the Ubuntu preview window to be dragged by its top chrome without breaking hover semantics
 - [ ] Ensure Nautilus rename interactions never trigger preview opening or replacement
@@ -672,6 +672,8 @@ Checklist reset rule:
 - [ ] Record Ubuntu-specific validation evidence proving one-to-one parity with macOS for each feature above
 
 _Worker 2 note (2026-04-08): the hidden Tauri desktop-shell export now writes Ubuntu validation reports plus companion shell snapshots into `Docs/Test_Logs/` for real Wayland/X11 review runs. These Layer 7 evidence items remain open until those real Ubuntu captures are produced and reviewed._
+
+_Worker 2 note (2026-04-08): the shared desktop preview now stages Markdown renders in an offscreen root and swaps the visible Ubuntu preview only after Markdown, KaTeX, and Mermaid enhancement complete, so replacement content no longer flashes a blank or partially rendered intermediate frame._
 
 ### Layer 8 — Cross-Platform macOS-Parity Validation Closure
 

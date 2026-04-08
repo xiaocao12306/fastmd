@@ -60,6 +60,7 @@ Shared shell parity now covered outside this crate:
 - the shared preview shell keeps the same four width tiers as the macOS reference
 - the compact hint chip and desktop chrome copy now match the macOS shell instead of showing Linux-only helper text
 - the Ubuntu shell now advertises the same fastmd-render Stage 2 rendering contract the shared frontend consumes, and fastmd-render pins `ui/src/markdown.ts`, `ui/src/styles.css`, and `ui/src/app.ts` to the current macOS `MarkdownRenderer.swift` runtime and copy
+- the shared desktop frontend now stages Markdown renders in an offscreen root and swaps the visible preview only after Markdown, KaTeX, and Mermaid enhancement complete, so Ubuntu preview replacement stays visually non-blocking instead of exposing a partial render between documents
 - the Ubuntu shell now surfaces live hovered-item diagnostics through the shared hover-anchor path, keeping rejected paths and unsupported entities visible in hidden shell metadata without changing user-visible product semantics
 - the Ubuntu shell now keeps the Wayland/X11 semantic guardrail in hidden shell metadata, so backend probe differences remain inspectable without leaking Linux-only copy into the visible macOS-parity shell
 - the Ubuntu shell now keeps the Wayland and X11 automated preview-loop validation summaries in hidden shell metadata, so reviewers can inspect full feature-list coverage for each display server without changing visible preview copy

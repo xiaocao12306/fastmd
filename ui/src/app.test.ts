@@ -10,8 +10,10 @@ const {
   listenToShellStateMock,
   replacePreviewMarkdownMock,
   requestPreviewCloseMock,
+  renderMarkdownDocumentMock,
   savePreviewMarkdownMock,
   setEditingStateMock,
+  markdownRenderState,
 } = vi.hoisted(() => ({
   bootstrapShellMock: vi.fn(async () => null),
   captureDesktopShellValidationSnapshotMock: vi.fn(async () => null),
@@ -22,8 +24,14 @@ const {
   listenToShellStateMock: vi.fn(async () => () => {}),
   replacePreviewMarkdownMock: vi.fn(async () => null),
   requestPreviewCloseMock: vi.fn(async () => {}),
+  renderMarkdownDocumentMock: vi.fn(),
   savePreviewMarkdownMock: vi.fn(async () => null),
   setEditingStateMock: vi.fn(async () => {}),
+  markdownRenderState: {
+    defaultImplementation: undefined as
+      | typeof import("./markdown").renderMarkdownDocument
+      | undefined,
+  },
 }));
 
 vi.mock("./bridge", async () => {
@@ -41,6 +49,16 @@ vi.mock("./bridge", async () => {
     requestPreviewClose: requestPreviewCloseMock,
     savePreviewMarkdown: savePreviewMarkdownMock,
     setEditingState: setEditingStateMock,
+  };
+});
+
+vi.mock("./markdown", async () => {
+  const actual = await vi.importActual<typeof import("./markdown")>("./markdown");
+  markdownRenderState.defaultImplementation = actual.renderMarkdownDocument;
+  renderMarkdownDocumentMock.mockImplementation(actual.renderMarkdownDocument);
+  return {
+    ...actual,
+    renderMarkdownDocument: renderMarkdownDocumentMock,
   };
 });
 
@@ -76,6 +94,8 @@ describe("FastMD shared preview shell", () => {
     listenToShellStateMock.mockClear();
     replacePreviewMarkdownMock.mockClear();
     requestPreviewCloseMock.mockClear();
+    renderMarkdownDocumentMock.mockImplementation(markdownRenderState.defaultImplementation!);
+    renderMarkdownDocumentMock.mockClear();
     savePreviewMarkdownMock.mockClear();
     setEditingStateMock.mockClear();
     document.body.innerHTML = "";
@@ -104,6 +124,7 @@ describe("FastMD shared preview shell", () => {
 
   it("enters and exits inline edit mode from a double-clicked block", async () => {
     createApp();
+    await new Promise((resolve) => setTimeout(resolve, 0));
     const block = document.querySelector(".md-block");
     expect(block).not.toBeNull();
     block?.dispatchEvent(new MouseEvent("dblclick", { bubbles: true }));
@@ -896,6 +917,7 @@ describe("FastMD shared preview shell", () => {
           ],
           widthTiersPx: [560, 960, 1440, 1920],
           aspectRatio: 4 / 3,
+          renderPipeline: "offscreen-stage-then-atomic-swap",
         },
       },
     });
@@ -914,8 +936,67 @@ describe("FastMD shared preview shell", () => {
     expect(shell?.dataset.sharedRenderSurfaceFeatures).toContain("html-block");
     expect(shell?.dataset.sharedRenderSurfaceWidthTiers).toBe("560,960,1440,1920");
     expect(shell?.dataset.sharedRenderSurfaceAspectRatio).toBe(String(4 / 3));
+    expect(shell?.dataset.sharedRenderSurfacePipeline).toBe(
+      "offscreen-stage-then-atomic-swap",
+    );
     expect(document.body.textContent).not.toContain("MarkdownRenderer.swift");
     expect(document.body.textContent).not.toContain("html-block");
+  });
+
+  it("keeps the current preview visible until the staged render is ready to swap", async () => {
+    let shellStateListener: ((payload: typeof demoBootstrapPayload.shellState) => void) | null = null;
+    let releaseRender: (() => void) | null = null;
+    const renderGate = new Promise<void>((resolve) => {
+      releaseRender = resolve;
+    });
+
+    const renderImpl = markdownRenderState.defaultImplementation!;
+    renderMarkdownDocumentMock.mockImplementation(async (root, markdown, backgroundMode, baseUrl) => {
+      if (markdown.includes("updated")) {
+        await renderGate;
+      }
+      await renderImpl(root, markdown, backgroundMode, baseUrl);
+    });
+    listenToShellStateMock.mockImplementationOnce(async (callback) => {
+      shellStateListener = callback;
+      return () => {};
+    });
+
+    const connectedApp = createApp({
+      ...demoBootstrapPayload,
+      shellState: {
+        ...demoBootstrapPayload.shellState,
+        documentTitle: "Old.md",
+        markdown: "# old\n\nCurrent body",
+      },
+    });
+    await connectedApp.connect();
+
+    const renderRoot = document.querySelector('[data-role="render-root"]') as HTMLElement | null;
+    const stageHost = document.querySelector('[data-role="render-stage-host"]') as HTMLElement | null;
+
+    expect(renderRoot?.textContent).toContain("Current body");
+
+    shellStateListener?.({
+      ...demoBootstrapPayload.shellState,
+      documentTitle: "Updated.md",
+      markdown: "# updated\n\nNext body",
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(renderRoot?.textContent).toContain("Current body");
+    expect(renderRoot?.textContent).not.toContain("Next body");
+    expect(renderRoot?.getAttribute("aria-busy")).toBe("true");
+    expect(stageHost?.children.length).toBe(1);
+
+    releaseRender?.();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(renderRoot?.textContent).toContain("Next body");
+    expect(renderRoot?.textContent).not.toContain("Current body");
+    expect(renderRoot?.hasAttribute("aria-busy")).toBe(false);
+    expect(stageHost?.children.length).toBe(0);
   });
 
   it("stores Ubuntu runtime diagnostics as hidden shell metadata", async () => {
@@ -1134,6 +1215,7 @@ describe("FastMD shared preview shell", () => {
       },
     });
 
+    await new Promise((resolve) => setTimeout(resolve, 0));
     const block = document.querySelector(".md-block");
     expect(block).not.toBeNull();
     block?.dispatchEvent(new MouseEvent("dblclick", { bubbles: true }));
@@ -1207,6 +1289,7 @@ describe("FastMD shared preview shell", () => {
       },
     });
 
+    await new Promise((resolve) => setTimeout(resolve, 0));
     const block = document.querySelector(".md-block");
     expect(block).not.toBeNull();
     block?.dispatchEvent(new MouseEvent("dblclick", { bubbles: true }));
