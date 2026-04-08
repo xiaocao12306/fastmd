@@ -200,6 +200,10 @@ impl WindowsPreviewLoop {
             return Ok(self.observe_frontmost_probe(at_ms, frontmost));
         }
 
+        if frontmost.observed_surface.blocks_hover_preview() {
+            return Ok(self.observe_frontmost_probe(at_ms, frontmost));
+        }
+
         let translation = self
             .adapter
             .translate_coordinates(ScreenPoint::new(0.0, 0.0))
@@ -232,6 +236,10 @@ impl WindowsPreviewLoop {
             .map_err(PreviewLoopError::FrontmostProbe)?;
 
         if !frontmost.allowed {
+            return Ok(self.observe_frontmost_probe(at_ms, frontmost));
+        }
+
+        if frontmost.observed_surface.blocks_hover_preview() {
             return Ok(self.observe_frontmost_probe(at_ms, frontmost));
         }
 
@@ -683,7 +691,9 @@ fn frontmost_runtime_diagnostic(
             RuntimeDiagnosticLevel::Warning
         },
         RuntimeDiagnosticCategory::FrontmostGating,
-        if frontmost.allowed {
+        if frontmost.allowed && frontmost.observed_surface.has_focused_text_input() {
+            "Explorer frontmost gating accepted the current foreground surface and suspended hover preview while Explorer edits text"
+        } else if frontmost.allowed {
             "Explorer frontmost gating accepted the current foreground surface"
         } else {
             "Explorer frontmost gating rejected the current foreground surface"
@@ -699,6 +709,13 @@ fn frontmost_runtime_diagnostic(
         format!("{:?}", frontmost.observed_surface.surface_kind),
     )
     .with_detail("expected_host", frontmost.allowed.to_string())
+    .with_detail(
+        "focused_text_input_active",
+        frontmost
+            .observed_surface
+            .has_focused_text_input()
+            .to_string(),
+    )
     .with_detail("notes", frontmost.notes.to_string());
 
     if let Some(identity) = frontmost.observed_surface.stable_identity() {
@@ -711,6 +728,22 @@ fn frontmost_runtime_diagnostic(
                     .map(|value| value.to_string())
                     .unwrap_or_else(|| "none".to_string()),
             );
+    }
+    if let Some(role_name) = frontmost
+        .observed_surface
+        .focused_text_input
+        .role_name
+        .as_deref()
+    {
+        diagnostic = diagnostic.with_detail("focused_text_input_role", role_name.to_string());
+    }
+    if let Some(element_name) = frontmost
+        .observed_surface
+        .focused_text_input
+        .element_name
+        .as_deref()
+    {
+        diagnostic = diagnostic.with_detail("focused_text_input_name", element_name.to_string());
     }
     if let Some(rejection) = &frontmost.rejection {
         diagnostic = diagnostic.with_detail("rejection", rejection.to_string());
@@ -837,6 +870,15 @@ mod tests {
     }
 
     fn explorer_frontmost_json() -> String {
+        explorer_frontmost_json_with_text_input(None)
+    }
+
+    fn explorer_frontmost_json_with_text_input(focused_text_input: Option<(&str, &str)>) -> String {
+        let (focused_is_text_input, focused_role_name, focused_name) = match focused_text_input {
+            Some((role_name, focused_name)) => (true, Some(role_name), Some(focused_name)),
+            None => (false, None, None),
+        };
+
         json!({
             "foreground_window_id": "hwnd:0x10001",
             "process_id": 4012,
@@ -844,7 +886,10 @@ mod tests {
             "window_class": "CabinetWClass",
             "window_title": "Docs",
             "directory": r"C:\Users\example\Docs",
-            "shell_window_id": "hwnd:0x10001"
+            "shell_window_id": "hwnd:0x10001",
+            "focused_is_text_input": focused_is_text_input,
+            "focused_role_name": focused_role_name,
+            "focused_name": focused_name
         })
         .to_string()
     }
@@ -1200,6 +1245,33 @@ mod tests {
     }
 
     #[test]
+    fn explorer_text_input_suppresses_hover_open_without_requiring_hover_or_coordinate_probes() {
+        let mut preview = WindowsPreviewLoop::new();
+
+        let events = preview
+            .observe_probe_outputs(
+                1_000,
+                &explorer_frontmost_json_with_text_input(Some(("ControlType.Edit", "Report.md"))),
+                None,
+                None,
+            )
+            .expect("text-input frontmost probe should classify without hover data");
+
+        assert!(product_events(&events).is_empty());
+        assert!(!preview.state().visibility.visible);
+
+        let diagnostics = reported_diagnostics(&events);
+        assert!(diagnostics.iter().any(|diagnostic| {
+            diagnostic.category == RuntimeDiagnosticCategory::FrontmostGating
+                && diagnostic
+                    .details
+                    .get("focused_text_input_active")
+                    .map(|value| value.as_str())
+                    == Some("true")
+        }));
+    }
+
+    #[test]
     fn keeps_same_hovered_markdown_from_reopening_while_stationary() {
         let fixture = TempFixture::new();
         let path = fixture.write_file("notes.md", "# hello");
@@ -1297,6 +1369,72 @@ mod tests {
             }
             other => panic!("unexpected event: {other:?}"),
         }
+    }
+
+    #[test]
+    fn explorer_text_input_blocks_hover_replacement_without_hiding_the_current_preview() {
+        let fixture = TempFixture::new();
+        let first = fixture.write_file("a.md", "# first");
+        let second = fixture.write_file("b.md", "# second");
+        let mut preview = WindowsPreviewLoop::new();
+
+        open_visible_preview(&mut preview, &first);
+
+        let events = preview
+            .observe_probe_outputs(
+                2_000,
+                &explorer_frontmost_json_with_text_input(Some(("ControlType.Edit", "Rename"))),
+                None,
+                None,
+            )
+            .expect("text-input frontmost probe should classify without hover data");
+
+        assert!(product_events(&events).is_empty());
+        assert!(preview.state().visibility.visible);
+        assert_eq!(
+            preview
+                .state()
+                .current_document
+                .as_ref()
+                .map(|document| document.display_name.as_str()),
+            Some("a.md")
+        );
+
+        assert!(
+            product_events(
+                &preview
+                    .observe_probe_outputs(
+                        2_500,
+                        &explorer_frontmost_json(),
+                        Some(&hovered_item_json(&second, "exact-item-under-pointer")),
+                        Some(&coordinate_json(420.0, 220.0)),
+                    )
+                    .expect("replacement hover should start a fresh debounce"),
+            )
+            .is_empty()
+        );
+
+        let replacement = preview
+            .observe_probe_outputs(
+                3_500,
+                &explorer_frontmost_json(),
+                Some(&hovered_item_json(&second, "exact-item-under-pointer")),
+                Some(&coordinate_json(420.0, 220.0)),
+            )
+            .expect("replacement hover should classify");
+
+        assert!(matches!(
+            product_events(&replacement).as_slice(),
+            [AppEvent::PreviewWindowRequested { .. }]
+        ));
+        assert_eq!(
+            preview
+                .state()
+                .current_document
+                .as_ref()
+                .map(|document| document.display_name.as_str()),
+            Some("b.md")
+        );
     }
 
     #[test]

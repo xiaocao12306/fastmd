@@ -32,7 +32,7 @@ pub struct AdapterValidationManifest {
     pub features: &'static [AdapterValidationFeature],
 }
 
-pub static WINDOWS_VALIDATION_FEATURES: [AdapterValidationFeature; 30] = [
+pub static WINDOWS_VALIDATION_FEATURES: [AdapterValidationFeature; 31] = [
     AdapterValidationFeature {
         blueprint_item: "Restrict Windows support target to Windows 11 plus Explorer only",
         status: FeatureStatus::ImplementedInThisCrate,
@@ -164,6 +164,11 @@ pub static WINDOWS_VALIDATION_FEATURES: [AdapterValidationFeature; 30] = [
         evidence: "PreviewWindowRequest now carries an optional warmed LoadedDocument payload, fastmd_core exposes the current hover-debounce candidate for host warmup, fastmd_render builds a warmed preview shell model from that preloaded document, and WindowsPreviewLoop now loads Markdown from disk during the 1-second debounce so the eventual preview-open request can reuse already-loaded content instead of blocking on open.",
     },
     AdapterValidationFeature {
+        blueprint_item: "Ensure Explorer rename interactions never trigger preview opening or replacement",
+        status: FeatureStatus::ImplementedInThisCrate,
+        evidence: "FrontmostWindowSnapshot now carries focused text-input state from the live Explorer probe, shared FrontSurface contracts expose that state explicitly, fastmd_core clears any pending hover and suppresses hover-driven open/replacement while a frontmost file-manager text input is active, and WindowsPreviewLoop proves the suppression path does not require hover or coordinate probes while rename/search/path-bar editing is active.",
+    },
+    AdapterValidationFeature {
         blueprint_item: "Implement the same inline block editing entry rule, edit source mapping behavior, edit save and cancel behavior, and edit-mode lock behavior as macOS",
         status: FeatureStatus::ImplementedInThisCrate,
         evidence: "WindowsPreviewLoop now opens edit sessions through the shared smallest-block selector, builds inline-editor DTOs from shared render block mappings, preserves the current textarea source across failed saves through the shared edit state, composes full-document save payloads with macOS-matching line-splice semantics, and proves crate-local lock behavior for hover replacement and close commands while edit mode is active or saving.",
@@ -227,9 +232,19 @@ mod tests {
             .filter(|feature| feature.status.is_complete())
             .count();
 
-        assert_eq!(implemented_in_crate, 17);
+        assert_eq!(implemented_in_crate, 18);
         assert_eq!(implemented_via_shared, 13);
-        assert_eq!(completed, 30);
+        assert_eq!(completed, 31);
+        assert!(
+            manifest
+                .features
+                .iter()
+                .any(|feature| {
+                    feature.status == FeatureStatus::ImplementedInThisCrate
+                        && feature.blueprint_item
+                            == "Ensure Explorer rename interactions never trigger preview opening or replacement"
+                })
+        );
         assert!(
             manifest
                 .features

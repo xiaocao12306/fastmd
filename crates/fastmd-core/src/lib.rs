@@ -101,6 +101,11 @@ impl CoreEngine {
             return self.hide_preview(CloseReason::AppSwitch);
         }
 
+        if front_surface.blocks_hover_preview() {
+            self.clear_pending_hover();
+            return Vec::new();
+        }
+
         if self.state.editing.phase.is_locked() {
             self.clear_pending_hover();
             return Vec::new();
@@ -670,8 +675,9 @@ mod tests {
     use super::*;
     use fastmd_contracts::{
         preview_feature_gaps_against_reference, AppCommand, BackgroundMode, DocumentKind,
-        DocumentOrigin, DocumentPath, EditingPhase, FrontSurfaceIdentity, FrontSurfaceKind,
-        MacOsPreviewFeature, PageDirection, PlatformId, PreviewFeatureCoverageLane,
+        DocumentOrigin, DocumentPath, EditingPhase, FocusedTextInputState, FrontSurfaceIdentity,
+        FrontSurfaceKind, MacOsPreviewFeature, PageDirection, PlatformId,
+        PreviewFeatureCoverageLane,
     };
     use fastmd_render::BlockKind;
     use std::collections::BTreeSet;
@@ -687,6 +693,7 @@ mod tests {
                 FrontSurfaceIdentity::new(native_window_id).with_process_id(7_001),
             ),
             expected_host,
+            focused_text_input: FocusedTextInputState::default(),
         }
     }
 
@@ -703,6 +710,7 @@ mod tests {
                 None
             },
             expected_host,
+            focused_text_input: FocusedTextInputState::default(),
         }
     }
 
@@ -906,6 +914,66 @@ mod tests {
     }
 
     #[test]
+    fn focused_text_input_blocks_hover_preview_until_a_fresh_pause_restarts() {
+        let mut engine = CoreEngine::new();
+        let mut text_input_surface = explorer_surface(true, "hwnd:0x10001");
+        text_input_surface.focused_text_input = FocusedTextInputState {
+            active: true,
+            role_name: Some("ControlType.Edit".to_string()),
+            element_name: Some("Report.md".to_string()),
+        };
+
+        assert!(engine
+            .observe_hover(
+                0,
+                explorer_surface(true, "hwnd:0x10001"),
+                Some(hovered_markdown("/Users/example/Docs/a.md", 180.0, 780.0)),
+                Some(monitor()),
+            )
+            .is_empty());
+        assert_eq!(
+            engine
+                .pending_hovered_document()
+                .map(|document| document.display_name.as_str()),
+            Some("a.md")
+        );
+
+        assert!(engine
+            .observe_hover(
+                500,
+                text_input_surface.clone(),
+                Some(hovered_markdown("/Users/example/Docs/a.md", 180.0, 780.0)),
+                None,
+            )
+            .is_empty());
+        assert!(engine.pending_hovered_document().is_none());
+        assert!(!engine.state().visibility.visible);
+
+        assert!(engine
+            .observe_hover(
+                1_000,
+                explorer_surface(true, "hwnd:0x10001"),
+                Some(hovered_markdown("/Users/example/Docs/a.md", 180.0, 780.0)),
+                None,
+            )
+            .is_empty());
+        assert!(!engine.state().visibility.visible);
+
+        let events = engine.observe_hover(
+            2_000,
+            explorer_surface(true, "hwnd:0x10001"),
+            Some(hovered_markdown("/Users/example/Docs/a.md", 180.0, 780.0)),
+            None,
+        );
+
+        assert!(matches!(
+            events.as_slice(),
+            [AppEvent::PreviewWindowRequested { .. }]
+        ));
+        assert!(engine.state().visibility.visible);
+    }
+
+    #[test]
     fn shared_core_preview_feature_coverage_stays_locked_to_macos_semantics() {
         let features: BTreeSet<_> = shared_core_preview_feature_coverage()
             .iter()
@@ -1005,6 +1073,48 @@ mod tests {
             Some("b.md")
         );
         assert_eq!(events.len(), 1);
+    }
+
+    #[test]
+    fn focused_text_input_blocks_hover_replacement_without_closing_the_current_preview() {
+        let mut engine = CoreEngine::new();
+        let mut text_input_surface = explorer_surface(true, "hwnd:0x10001");
+        text_input_surface.focused_text_input = FocusedTextInputState {
+            active: true,
+            role_name: Some("ControlType.Edit".to_string()),
+            element_name: Some("Rename".to_string()),
+        };
+
+        engine.observe_hover(
+            0,
+            explorer_surface(true, "hwnd:0x10001"),
+            Some(hovered_markdown("/Users/example/Docs/a.md", 180.0, 780.0)),
+            Some(monitor()),
+        );
+        engine.observe_hover(
+            1_000,
+            explorer_surface(true, "hwnd:0x10001"),
+            Some(hovered_markdown("/Users/example/Docs/a.md", 180.0, 780.0)),
+            None,
+        );
+
+        let replacement_attempt = engine.observe_hover(
+            2_500,
+            text_input_surface,
+            Some(hovered_markdown("/Users/example/Docs/b.md", 220.0, 700.0)),
+            None,
+        );
+
+        assert!(replacement_attempt.is_empty());
+        assert!(engine.state().visibility.visible);
+        assert_eq!(
+            engine
+                .state()
+                .current_document
+                .as_ref()
+                .map(|document| document.display_name.as_str()),
+            Some("a.md")
+        );
     }
 
     #[test]

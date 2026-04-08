@@ -5,8 +5,8 @@ use std::io::Write;
 use std::process::{Command, Stdio};
 
 use fastmd_contracts::{
-    DocumentPath, FrontSurface, FrontSurfaceIdentity, FrontSurfaceKind, PlatformId,
-    WINDOWS_EXPLORER_FRONTMOST_REFERENCE,
+    DocumentPath, FocusedTextInputState, FrontSurface, FrontSurfaceIdentity, FrontSurfaceKind,
+    PlatformId, WINDOWS_EXPLORER_FRONTMOST_REFERENCE,
 };
 use serde::Deserialize;
 
@@ -73,6 +73,83 @@ public static class FastMDFrontmostNative {
 '@
 
 Add-Type -TypeDefinition $signature
+Add-Type -AssemblyName UIAutomationClient
+
+function Get-FocusedTextInputState {
+    param([int64]$ForegroundWindowInt64)
+
+    $inactiveState = @{
+        focused_is_text_input = $false
+        focused_role_name = $null
+        focused_name = $null
+    }
+
+    try {
+        $focusedElement = [System.Windows.Automation.AutomationElement]::FocusedElement
+    } catch {
+        return $inactiveState
+    }
+
+    if ($null -eq $focusedElement) {
+        return $inactiveState
+    }
+
+    $walker = [System.Windows.Automation.TreeWalker]::ControlViewWalker
+    $cursor = $focusedElement
+    $belongsToForegroundWindow = $false
+
+    for ($depth = 0; $depth -lt 24 -and $null -ne $cursor; $depth++) {
+        try {
+            if ([int64]$cursor.Current.NativeWindowHandle -eq $ForegroundWindowInt64) {
+                $belongsToForegroundWindow = $true
+                break
+            }
+        } catch {
+        }
+
+        try {
+            $cursor = $walker.GetParent($cursor)
+        } catch {
+            $cursor = $null
+        }
+    }
+
+    if (-not $belongsToForegroundWindow) {
+        return $inactiveState
+    }
+
+    $controlType = $null
+    $focusedRoleName = $null
+    $focusedName = $null
+
+    try {
+        $controlType = $focusedElement.Current.ControlType
+        if ($null -ne $controlType) {
+            $focusedRoleName = [string]$controlType.ProgrammaticName
+        }
+    } catch {
+    }
+
+    try {
+        $focusedName = [string]$focusedElement.Current.Name
+    } catch {
+    }
+
+    $isTextInput = $false
+    if ($null -ne $controlType) {
+        $isTextInput = (
+            ($controlType -eq [System.Windows.Automation.ControlType]::Edit) -or
+            ($controlType -eq [System.Windows.Automation.ControlType]::Document) -or
+            ($controlType -eq [System.Windows.Automation.ControlType]::ComboBox)
+        )
+    }
+
+    return @{
+        focused_is_text_input = [bool]$isTextInput
+        focused_role_name = if ([string]::IsNullOrWhiteSpace($focusedRoleName)) { $null } else { $focusedRoleName }
+        focused_name = if ([string]::IsNullOrWhiteSpace($focusedName)) { $null } else { $focusedName }
+    }
+}
 
 $PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
 $foregroundWindow = [FastMDFrontmostNative]::GetForegroundWindow()
@@ -124,6 +201,7 @@ try {
 
 # Shell.Application.Windows() projects the same ShellWindows / IWebBrowserApp
 # HWND bridge the Stage 2 blueprint requires for stable Explorer identity.
+$focusedTextInput = Get-FocusedTextInputState $foregroundWindow.ToInt64()
 $shellApplication = New-Object -ComObject Shell.Application
 $shellWindows = $shellApplication.Windows()
 $matchedShellWindow = $null
@@ -169,6 +247,9 @@ try {
         window_title = if ([string]::IsNullOrWhiteSpace($windowTitle)) { $null } else { $windowTitle }
         directory = if ([string]::IsNullOrWhiteSpace($directory)) { $null } else { $directory }
         shell_window_id = if ([string]::IsNullOrWhiteSpace($shellWindowId)) { $null } else { $shellWindowId }
+        focused_is_text_input = [bool]$focusedTextInput.focused_is_text_input
+        focused_role_name = if ([string]::IsNullOrWhiteSpace([string]$focusedTextInput.focused_role_name)) { $null } else { [string]$focusedTextInput.focused_role_name }
+        focused_name = if ([string]::IsNullOrWhiteSpace([string]$focusedTextInput.focused_name)) { $null } else { [string]$focusedTextInput.focused_name }
     } | ConvertTo-Json -Compress -Depth 3
 } finally {
     if ($null -ne $matchedShellWindow) {
@@ -237,6 +318,7 @@ pub struct FrontmostWindowSnapshot {
     pub window_title: Option<String>,
     pub directory: Option<DocumentPath>,
     pub shell_window_id: Option<String>,
+    pub focused_text_input: FocusedTextInputState,
 }
 
 impl FrontmostWindowSnapshot {
@@ -254,6 +336,7 @@ impl FrontmostWindowSnapshot {
             window_title: None,
             directory: None,
             shell_window_id: None,
+            focused_text_input: FocusedTextInputState::default(),
         }
     }
 
@@ -269,6 +352,19 @@ impl FrontmostWindowSnapshot {
 
     pub fn with_shell_window_id(mut self, shell_window_id: impl Into<String>) -> Self {
         self.shell_window_id = Some(shell_window_id.into());
+        self
+    }
+
+    pub fn with_focused_text_input(
+        mut self,
+        role_name: impl Into<String>,
+        element_name: impl Into<String>,
+    ) -> Self {
+        self.focused_text_input = FocusedTextInputState {
+            active: true,
+            role_name: Some(role_name.into()),
+            element_name: Some(element_name.into()),
+        };
         self
     }
 
@@ -300,6 +396,7 @@ impl FrontmostWindowSnapshot {
             expected_host: matches_explorer_process
                 && matches_explorer_window_class
                 && stable_identity.is_some(),
+            focused_text_input: self.focused_text_input.clone(),
         }
     }
 
@@ -365,6 +462,12 @@ struct FrontmostWindowSnapshotPayload {
     directory: Option<String>,
     #[serde(default)]
     shell_window_id: Option<String>,
+    #[serde(default)]
+    focused_is_text_input: bool,
+    #[serde(default)]
+    focused_role_name: Option<String>,
+    #[serde(default)]
+    focused_name: Option<String>,
 }
 
 pub fn parse_frontmost_window_snapshot(
@@ -406,6 +509,18 @@ pub fn parse_frontmost_window_snapshot(
         .filter(|window_id| !window_id.trim().is_empty())
     {
         snapshot = snapshot.with_shell_window_id(shell_window_id);
+    }
+
+    if payload.focused_is_text_input {
+        snapshot.focused_text_input = FocusedTextInputState {
+            active: true,
+            role_name: payload
+                .focused_role_name
+                .filter(|value| !value.trim().is_empty()),
+            element_name: payload
+                .focused_name
+                .filter(|value| !value.trim().is_empty()),
+        };
     }
 
     Ok(snapshot)
@@ -562,6 +677,7 @@ mod tests {
             WINDOWS_EXPLORER_FRONTMOST_REFERENCE.app_identifier
         );
         assert!(surface.has_stable_identity());
+        assert!(!surface.has_focused_text_input());
         assert_eq!(
             surface
                 .stable_identity()
@@ -638,6 +754,35 @@ mod tests {
         );
         assert!(!surface.expected_host);
         assert!(!surface.has_stable_identity());
+        assert!(!surface.has_focused_text_input());
+    }
+
+    #[test]
+    fn observed_surface_preserves_focused_text_input_state_for_hover_suppression() {
+        let snapshot = FrontmostWindowSnapshot::new(
+            "hwnd:0x10005",
+            4_016,
+            r"C:\Windows\explorer.exe",
+            "CabinetWClass",
+        )
+        .with_window_title("Docs")
+        .with_directory(r"C:\Users\example\Docs")
+        .with_shell_window_id("hwnd:0x10005")
+        .with_focused_text_input("ControlType.Edit", "Report.md");
+
+        let surface = snapshot.observed_surface();
+
+        assert!(surface.expected_host);
+        assert!(surface.has_focused_text_input());
+        assert!(surface.blocks_hover_preview());
+        assert_eq!(
+            surface.focused_text_input.role_name.as_deref(),
+            Some("ControlType.Edit")
+        );
+        assert_eq!(
+            surface.focused_text_input.element_name.as_deref(),
+            Some("Report.md")
+        );
     }
 
     #[test]
@@ -650,7 +795,10 @@ mod tests {
                 "window_class":"CabinetWClass",
                 "window_title":"Docs",
                 "directory":"C:\\Users\\example\\Docs",
-                "shell_window_id":"hwnd:0x10001"
+                "shell_window_id":"hwnd:0x10001",
+                "focused_is_text_input":true,
+                "focused_role_name":"ControlType.Edit",
+                "focused_name":"Report.md"
             }"#,
         )
         .expect("valid probe JSON should parse");
@@ -665,6 +813,15 @@ mod tests {
             Some(r"C:\Users\example\Docs")
         );
         assert_eq!(snapshot.shell_window_id.as_deref(), Some("hwnd:0x10001"));
+        assert!(snapshot.focused_text_input.active);
+        assert_eq!(
+            snapshot.focused_text_input.role_name.as_deref(),
+            Some("ControlType.Edit")
+        );
+        assert_eq!(
+            snapshot.focused_text_input.element_name.as_deref(),
+            Some("Report.md")
+        );
     }
 
     #[test]

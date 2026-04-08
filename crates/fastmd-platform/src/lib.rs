@@ -1,7 +1,7 @@
 use fastmd_contracts::{
-    CloseReason, FrontSurface, HostCapabilities, HostError, HoveredItem, LoadedDocument,
-    MonitorMetadata, PermissionState, PlatformId, PreviewWindowRequest, ResolvedDocument,
-    ScreenPoint,
+    CloseReason, FocusedTextInputState, FrontSurface, HostCapabilities, HostError, HoveredItem,
+    LoadedDocument, MonitorMetadata, PermissionState, PlatformId, PreviewWindowRequest,
+    ResolvedDocument, ScreenPoint,
 };
 
 pub trait HostSurface {
@@ -73,6 +73,7 @@ mod tests {
                     FrontSurfaceIdentity::new("finder-window-1").with_process_id(7_001),
                 ),
                 expected_host: true,
+                focused_text_input: FocusedTextInputState::default(),
             })
         }
 

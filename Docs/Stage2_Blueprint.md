@@ -593,7 +593,7 @@ Checklist reset rule:
 - [x] Optimize the Windows preview rendering pipeline so Markdown display feels pre-rendered and visually non-blocking
 - [ ] Support `.md` preview triggering in non-list Explorer presentation modes instead of list-view-only behavior
 - [ ] Allow the Windows preview window to be dragged by its top chrome without breaking hover semantics
-- [ ] Ensure Explorer rename interactions never trigger preview opening or replacement
+- [x] Ensure Explorer rename interactions never trigger preview opening or replacement
 - [x] Implement the same runtime diagnostics coverage as macOS where host APIs permit
 - [x] Emit Windows-side diagnostics for frontmost gating, hovered-item resolution, monitor selection, preview placement, and edit lifecycle
 - [x] Validate the full Windows preview loop end-to-end against the macOS feature list

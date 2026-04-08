@@ -6,7 +6,9 @@ use std::{
     process::{Command, Stdio},
 };
 
-use fastmd_contracts::{FrontSurface, HoverResolutionScope, MACOS_REFERENCE_BEHAVIOR, ScreenPoint};
+#[cfg(target_os = "windows")]
+use fastmd_contracts::{FrontSurface, ScreenPoint};
+use fastmd_contracts::{HoverResolutionScope, MACOS_REFERENCE_BEHAVIOR};
 use serde::Deserialize;
 
 use crate::filter::{

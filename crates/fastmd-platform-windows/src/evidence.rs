@@ -5,13 +5,12 @@ use std::io::Write;
 use std::process::{Command, Stdio};
 
 use fastmd_contracts::{
-    macos_preview_feature_list, preview_feature_coverage_from_records,
+    MacOsPreviewFeature, PlatformId, PreviewFeatureCoverageLane, RealHostEvidenceRequirement,
+    ScreenPoint, ValidationCaptureProvenance, ValidationHostEnvironment,
+    ValidationRequirementStatus, macos_preview_feature_list, preview_feature_coverage_from_records,
     preview_feature_coverage_record_gaps_against_reference,
     preview_feature_coverage_records_match_reference,
     preview_feature_real_host_evidence_requirements, preview_feature_validation_statuses,
-    MacOsPreviewFeature, PlatformId, PreviewFeatureCoverageLane, RealHostEvidenceRequirement,
-    ScreenPoint, ValidationCaptureProvenance, ValidationHostEnvironment,
-    ValidationRequirementStatus,
 };
 use fastmd_core::{
     monitor_selection_mode, select_monitor_for_anchor, selected_monitor_matches_reference,
@@ -19,12 +18,12 @@ use fastmd_core::{
 #[cfg(target_os = "windows")]
 use serde::Deserialize;
 
-use crate::{
-    windows_preview_loop_feature_coverage_records, FrontmostSurfaceProbe, HoveredItemProbeOutcome,
-    WindowsCoordinateTranslation, MACOS_REFERENCE_BEHAVIOR,
-};
 #[cfg(target_os = "windows")]
 use crate::{AdapterError, ExplorerAdapter};
+use crate::{
+    FrontmostSurfaceProbe, HoveredItemProbeOutcome, MACOS_REFERENCE_BEHAVIOR,
+    WindowsCoordinateTranslation, windows_preview_loop_feature_coverage_records,
+};
 
 const FRONTMOST_CHECKLIST_ITEMS: [&str; 1] =
     ["Record validation evidence for frontmost Explorer detection on a real Windows 11 machine"];
@@ -234,8 +233,8 @@ pub fn build_windows_validation_evidence_report(
 }
 
 #[cfg(target_os = "windows")]
-pub fn capture_live_windows_validation_evidence_report(
-) -> Result<WindowsValidationEvidenceReport, AdapterError> {
+pub fn capture_live_windows_validation_evidence_report()
+-> Result<WindowsValidationEvidenceReport, AdapterError> {
     let adapter = ExplorerAdapter::new();
     let environment = probe_windows_validation_environment().map_err(|message| {
         AdapterError::HostProbeFailed {
@@ -976,12 +975,12 @@ mod tests {
     };
 
     use super::{
-        build_windows_validation_evidence_report, EvidenceSectionStatus,
-        WindowsValidationEvidenceReport,
+        EvidenceSectionStatus, WindowsValidationEvidenceReport,
+        build_windows_validation_evidence_report,
     };
     use crate::{
         ExplorerAdapter, FrontmostWindowSnapshot, HoverCandidate, HoverCandidateSource,
-        HoveredExplorerItemSnapshot, WindowsCoordinateTranslation, WINDOWS_COORDINATE_API_STACK,
+        HoveredExplorerItemSnapshot, WINDOWS_COORDINATE_API_STACK, WindowsCoordinateTranslation,
     };
 
     #[derive(Debug)]
@@ -1136,8 +1135,8 @@ mod tests {
     }
 
     #[test]
-    fn report_marks_all_sections_pass_when_real_host_provenance_and_probe_inputs_are_parity_compliant(
-    ) {
+    fn report_marks_all_sections_pass_when_real_host_provenance_and_probe_inputs_are_parity_compliant()
+     {
         let report = parity_compliant_report(ValidationCaptureProvenance::RealHostSession);
 
         assert_eq!(report.sections.len(), 4);
@@ -1191,9 +1190,11 @@ mod tests {
             report.sections[3].status,
             EvidenceSectionStatus::NotCaptured
         );
-        assert!(report
-            .to_markdown()
-            .contains("does not satisfy the Layer 6 target `Windows 11 + Explorer only`."));
+        assert!(
+            report
+                .to_markdown()
+                .contains("does not satisfy the Layer 6 target `Windows 11 + Explorer only`.")
+        );
     }
 
     #[test]
@@ -1269,12 +1270,16 @@ mod tests {
             report.sections[3].status,
             EvidenceSectionStatus::NotCaptured
         );
-        assert!(report
-            .to_markdown()
-            .contains("Selected monitor matches shared-core placement rule: `false`"));
-        assert!(report
-            .to_markdown()
-            .contains("does not match the shared-core expectation `Left monitor`"));
+        assert!(
+            report
+                .to_markdown()
+                .contains("Selected monitor matches shared-core placement rule: `false`")
+        );
+        assert!(
+            report
+                .to_markdown()
+                .contains("does not match the shared-core expectation `Left monitor`")
+        );
     }
 
     #[test]
@@ -1312,8 +1317,11 @@ mod tests {
         assert!(
             markdown.contains("Reference features ready for Layer 6 evidence closure: `20/20`.")
         );
-        assert!(markdown
-            .contains("Reference features still blocked by automated or live-host evidence: `0`."));
+        assert!(
+            markdown.contains(
+                "Reference features still blocked by automated or live-host evidence: `0`."
+            )
+        );
         assert!(markdown.contains(
             "Reference feature `Open preview after a 1-second hover debounce`: automated lanes `shared-core`; automated status `covered`; parity readiness `ready`; real-host evidence `not required beyond automated parity coverage`"
         ));
@@ -1337,10 +1345,12 @@ mod tests {
     fn report_keeps_frontmost_surface_kind_human_readable() {
         let report = parity_compliant_report(ValidationCaptureProvenance::RealHostSession);
 
-        assert!(report.sections[0]
-            .details
-            .iter()
-            .any(|detail| detail == "Observed surface kind: `explorer-list-view`"));
+        assert!(
+            report.sections[0]
+                .details
+                .iter()
+                .any(|detail| detail == "Observed surface kind: `explorer-list-view`")
+        );
         assert_ne!(FrontSurfaceKind::ExplorerListView, FrontSurfaceKind::Other);
     }
 
@@ -1359,12 +1369,16 @@ mod tests {
             .contains(
                 &"Record validation evidence for frontmost Explorer detection on a real Windows 11 machine"
             ));
-        assert!(report
-            .to_markdown()
-            .contains("- Layer 6 closure readiness: `not-ready-to-close`"));
-        assert!(report
-            .to_markdown()
-            .contains("Reference features ready for Layer 6 evidence closure: `14/20`."));
+        assert!(
+            report
+                .to_markdown()
+                .contains("- Layer 6 closure readiness: `not-ready-to-close`")
+        );
+        assert!(
+            report
+                .to_markdown()
+                .contains("Reference features ready for Layer 6 evidence closure: `14/20`.")
+        );
         assert!(report.to_markdown().contains(
             "Reference feature `Preserve the macOS four-tier width model of 560 / 960 / 1440 / 1920`: automated lanes `shared-core`; automated status `covered`; parity readiness `blocked`; real-host evidence `monitor-selection-and-coordinate-translation (not-captured)`"
         ));
@@ -1404,12 +1418,16 @@ mod tests {
             .contains(
                 &"Record Windows-specific validation evidence proving one-to-one parity with macOS for each feature above"
             ));
-        assert!(report
-            .to_markdown()
-            .contains("- Layer 6 closure readiness: `not-ready-to-close`"));
-        assert!(report
-            .to_markdown()
-            .contains("Reference features ready for Layer 6 evidence closure: `17/20`."));
+        assert!(
+            report
+                .to_markdown()
+                .contains("- Layer 6 closure readiness: `not-ready-to-close`")
+        );
+        assert!(
+            report
+                .to_markdown()
+                .contains("Reference features ready for Layer 6 evidence closure: `17/20`.")
+        );
         assert!(report.to_markdown().contains(
             "Automated coverage matches the macOS reference list, but the parity-evidence checklist item stays blocked until these real-machine sections pass: Frontmost Explorer Detection (fail); Exact Hovered-Item Resolution (not-captured)."
         ));

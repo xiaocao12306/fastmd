@@ -1646,6 +1646,22 @@ impl FrontSurfaceIdentity {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub struct FocusedTextInputState {
+    #[serde(default)]
+    pub active: bool,
+    #[serde(default)]
+    pub role_name: Option<String>,
+    #[serde(default)]
+    pub element_name: Option<String>,
+}
+
+impl FocusedTextInputState {
+    pub fn is_active(&self) -> bool {
+        self.active
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FrontSurface {
     pub platform_id: PlatformId,
@@ -1655,6 +1671,8 @@ pub struct FrontSurface {
     pub directory: Option<DocumentPath>,
     pub stable_identity: Option<FrontSurfaceIdentity>,
     pub expected_host: bool,
+    #[serde(default)]
+    pub focused_text_input: FocusedTextInputState,
 }
 
 impl FrontSurface {
@@ -1668,6 +1686,14 @@ impl FrontSurface {
 
     pub fn has_stable_identity(&self) -> bool {
         self.stable_identity.is_some()
+    }
+
+    pub fn has_focused_text_input(&self) -> bool {
+        self.focused_text_input.is_active()
+    }
+
+    pub fn blocks_hover_preview(&self) -> bool {
+        self.is_expected_host() && self.has_focused_text_input()
     }
 }
 
@@ -2031,6 +2057,7 @@ mod tests {
                 FrontSurfaceIdentity::new("finder-window-1").with_process_id(7_001),
             ),
             expected_host: true,
+            focused_text_input: FocusedTextInputState::default(),
         }
     }
 
@@ -2047,6 +2074,7 @@ mod tests {
                 None
             },
             expected_host,
+            focused_text_input: FocusedTextInputState::default(),
         }
     }
 
@@ -2518,6 +2546,41 @@ mod tests {
         assert!(!rejected.is_expected_host());
         assert!(!rejected.has_stable_identity());
         assert_roundtrip(&rejected);
+    }
+
+    #[test]
+    fn focused_text_input_state_tracks_hover_preview_suppression() {
+        let mut surface = sample_windows_front_surface(true);
+
+        assert!(!surface.has_focused_text_input());
+        assert!(!surface.blocks_hover_preview());
+
+        surface.focused_text_input = FocusedTextInputState {
+            active: true,
+            role_name: Some("ControlType.Edit".to_string()),
+            element_name: Some("Report.md".to_string()),
+        };
+
+        assert!(surface.has_focused_text_input());
+        assert!(surface.blocks_hover_preview());
+
+        let blocked_json = serde_json::json!({
+            "platform_id": "windows-explorer",
+            "surface_kind": "explorer-list-view",
+            "app_identifier": "explorer.exe",
+            "window_title": "Docs",
+            "directory": r"C:\Users\example\Docs",
+            "stable_identity": {
+                "native_window_id": "hwnd:0x10001",
+                "owner_process_id": 4012
+            },
+            "expected_host": true
+        });
+        let decoded: FrontSurface = serde_json::from_value(blocked_json)
+            .expect("legacy front-surface payload should deserialize");
+
+        assert!(!decoded.has_focused_text_input());
+        assert!(!decoded.blocks_hover_preview());
     }
 
     #[test]

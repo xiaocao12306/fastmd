@@ -305,6 +305,7 @@ impl ExplorerAdapter {
         }
     }
 
+    #[cfg(target_os = "windows")]
     fn host_probe_failed(
         &self,
         api: HostApi,
@@ -326,7 +327,8 @@ mod tests {
     use crate::hover::{HoverProbeError, HoveredItemResolutionRejection, WindowsHoverApi};
     use crate::{HoverCandidateRejection, HoverCandidateSource};
     use fastmd_contracts::{
-        DocumentPath, FrontSurface, FrontSurfaceIdentity, FrontSurfaceKind, PlatformId, ScreenPoint,
+        DocumentPath, FocusedTextInputState, FrontSurface, FrontSurfaceIdentity, FrontSurfaceKind,
+        PlatformId, ScreenPoint,
     };
     use std::fs;
     use std::path::{Path, PathBuf};
@@ -373,6 +375,7 @@ mod tests {
             directory: Some(DocumentPath::from(r"C:\Users\example\Docs")),
             stable_identity: Some(FrontSurfaceIdentity::new("hwnd:0x10001").with_process_id(4_012)),
             expected_host: true,
+            focused_text_input: FocusedTextInputState::default(),
         }
     }
 
