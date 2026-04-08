@@ -224,6 +224,24 @@ export function readLinuxValidationEvidence(
   return capabilities.linuxValidationEvidence ?? null;
 }
 
+export function readLinuxValidationEvidenceReviewArtifactState(
+  capabilities: HostCapabilities,
+): Pick<
+  LinuxValidationEvidence,
+  "reviewArtifactPresent" | "reviewArtifactMatchesLatestReports"
+> | null {
+  const validationEvidence = readLinuxValidationEvidence(capabilities);
+  if (!validationEvidence) {
+    return null;
+  }
+
+  return {
+    reviewArtifactPresent: validationEvidence.reviewArtifactPresent ?? false,
+    reviewArtifactMatchesLatestReports:
+      validationEvidence.reviewArtifactMatchesLatestReports ?? false,
+  };
+}
+
 export function readLinuxValidationEvidenceLatestReports(
   capabilities: HostCapabilities,
 ): LinuxValidationEvidenceReport[] {

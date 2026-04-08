@@ -216,6 +216,7 @@ describe("FastMD shared preview shell", () => {
       anchor: { x: 240, y: 180 },
       readyToCloseDisplayServerReport: true,
       crossSessionParityEvidenceReady: false,
+      crossSessionParityEvidenceStatus: "cross-session-review-required",
       crossSessionParityEvidenceNote:
         "Single-session validation reports can only prove one live Ubuntu display server at a time. Keep the umbrella Ubuntu parity-evidence checklist item open until reviewed real-machine evidence exists for both Wayland and X11.",
       crossSessionRequiredDisplayServers: ["wayland", "x11"],
@@ -273,6 +274,7 @@ describe("FastMD shared preview shell", () => {
         anchor: { x: 240, y: 180 },
         readyToCloseDisplayServerReport: true,
         crossSessionParityEvidenceReady: false,
+        crossSessionParityEvidenceStatus: "cross-session-review-required",
         crossSessionParityEvidenceNote:
           "Single-session validation reports can only prove one live Ubuntu display server at a time. Keep the umbrella Ubuntu parity-evidence checklist item open until reviewed real-machine evidence exists for both Wayland and X11.",
         crossSessionRequiredDisplayServers: ["wayland", "x11"],
@@ -339,6 +341,8 @@ describe("FastMD shared preview shell", () => {
         capturedDisplayServers: ["wayland"],
         missingDisplayServers: ["x11"],
         readyDisplayServerReports: ["wayland"],
+        reviewArtifactPresent: false,
+        reviewArtifactMatchesLatestReports: false,
         latestReports: [
           {
             displayServer: "wayland",
@@ -404,6 +408,8 @@ describe("FastMD shared preview shell", () => {
         missingDisplayServers: [],
         readyDisplayServerReports: ["wayland", "x11"],
         reviewedDisplayServers: ["wayland", "x11"],
+        reviewArtifactPresent: true,
+        reviewArtifactMatchesLatestReports: true,
         reviewArtifactMarkdownPath:
           "/repo/Docs/Test_Logs/ubuntu-validation-review-signoff.md",
         reviewArtifactJsonPath:
@@ -472,6 +478,8 @@ describe("FastMD shared preview shell", () => {
           capturedDisplayServers: ["wayland"],
           missingDisplayServers: ["x11"],
           readyDisplayServerReports: ["wayland"],
+          reviewArtifactPresent: false,
+          reviewArtifactMatchesLatestReports: false,
           latestReports: [
             {
               displayServer: "wayland",
@@ -522,6 +530,8 @@ describe("FastMD shared preview shell", () => {
       "cross-session-review-required",
     );
     expect(shell?.dataset.linuxValidationEvidenceNote).toContain("Wayland and X11");
+    expect(shell?.dataset.linuxValidationEvidenceReviewArtifactPresent).toBe("false");
+    expect(shell?.dataset.linuxValidationEvidenceReviewArtifactMatchesLatestReports).toBe("false");
     expect(shell?.dataset.linuxValidationEvidenceWaylandReportMarkdownPath).toContain(
       "ubuntu-validation-report-wayland",
     );
@@ -572,6 +582,8 @@ describe("FastMD shared preview shell", () => {
           capturedDisplayServers: [],
           missingDisplayServers: ["wayland", "x11"],
           readyDisplayServerReports: [],
+          reviewArtifactPresent: false,
+          reviewArtifactMatchesLatestReports: false,
           latestReports: [],
         },
       },
@@ -593,6 +605,8 @@ describe("FastMD shared preview shell", () => {
     expect(shell?.dataset.linuxValidationEvidenceMissingDisplayServers).toBe(
       JSON.stringify(["wayland", "x11"]),
     );
+    expect(shell?.dataset.linuxValidationEvidenceReviewArtifactPresent).toBe("false");
+    expect(shell?.dataset.linuxValidationEvidenceReviewArtifactMatchesLatestReports).toBe("false");
     expect(shell?.dataset.linuxValidationEvidenceLatestReports).toBe("[]");
     expect(shell?.dataset.linuxValidationEvidenceWaylandReportMarkdownPath).toBeUndefined();
     expect(shell?.dataset.linuxValidationEvidenceX11ReportMarkdownPath).toBeUndefined();
@@ -621,6 +635,8 @@ describe("FastMD shared preview shell", () => {
           missingDisplayServers: [],
           readyDisplayServerReports: ["wayland", "x11"],
           reviewedDisplayServers: ["wayland", "x11"],
+          reviewArtifactPresent: true,
+          reviewArtifactMatchesLatestReports: true,
           reviewArtifactMarkdownPath:
             "/repo/Docs/Test_Logs/ubuntu-validation-review-signoff.md",
           reviewArtifactJsonPath:
@@ -643,6 +659,8 @@ describe("FastMD shared preview shell", () => {
     expect(shell?.dataset.linuxValidationEvidenceReviewedDisplayServers).toBe(
       JSON.stringify(["wayland", "x11"]),
     );
+    expect(shell?.dataset.linuxValidationEvidenceReviewArtifactPresent).toBe("true");
+    expect(shell?.dataset.linuxValidationEvidenceReviewArtifactMatchesLatestReports).toBe("true");
     expect(shell?.dataset.linuxValidationEvidenceReviewArtifactMarkdownPath).toContain(
       "ubuntu-validation-review-signoff.md",
     );
@@ -655,6 +673,52 @@ describe("FastMD shared preview shell", () => {
     );
     expect(document.body.textContent).not.toContain("cross-session-reviewed-ready-to-close");
     expect(document.body.textContent).not.toContain("ubuntu-validation-review-signoff");
+  });
+
+  it("stores stale Ubuntu review-signoff state as hidden shell metadata", async () => {
+    createApp({
+      ...demoBootstrapPayload,
+      hostCapabilities: {
+        ...demoBootstrapPayload.hostCapabilities,
+        platformId: "ubuntu",
+        runtimeMode: "desktop",
+        linuxValidationEvidence: {
+          status: "cross-session-review-stale",
+          checklistItem:
+            "Record Ubuntu-specific validation evidence proving one-to-one parity with macOS for each feature above",
+          note:
+            "Wayland and X11 live Ubuntu validation reports now exist, but the saved review sign-off no longer matches the latest ready report set.",
+          readyToCloseChecklistItem: false,
+          requiredDisplayServers: ["wayland", "x11"],
+          capturedDisplayServers: ["wayland", "x11"],
+          missingDisplayServers: [],
+          readyDisplayServerReports: ["wayland", "x11"],
+          reviewedDisplayServers: ["wayland", "x11"],
+          reviewArtifactPresent: true,
+          reviewArtifactMatchesLatestReports: false,
+          reviewArtifactMarkdownPath:
+            "/repo/Docs/Test_Logs/ubuntu-validation-review-signoff.md",
+          reviewArtifactJsonPath:
+            "/repo/Docs/Test_Logs/ubuntu-validation-review-signoff.json",
+          reviewedAtUnixMs: 1710000000999,
+          reviewedBy: "worker-2",
+          reviewNote: "Re-review required after newer Wayland capture.",
+          latestReports: [],
+        },
+      },
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const shell = document.querySelector(".shell") as HTMLElement | null;
+
+    expect(shell?.dataset.linuxValidationEvidenceStatus).toBe("cross-session-review-stale");
+    expect(shell?.dataset.linuxValidationEvidenceReadyToCloseChecklistItem).toBe("false");
+    expect(shell?.dataset.linuxValidationEvidenceReviewArtifactPresent).toBe("true");
+    expect(shell?.dataset.linuxValidationEvidenceReviewArtifactMatchesLatestReports).toBe(
+      "false",
+    );
+    expect(shell?.dataset.linuxValidationEvidenceReviewedBy).toBe("worker-2");
+    expect(document.body.textContent).not.toContain("cross-session-review-stale");
   });
 
   it("stores Ubuntu probe-plan diagnostics as hidden shell metadata", async () => {

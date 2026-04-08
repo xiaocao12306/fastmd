@@ -8,24 +8,23 @@ use std::{
 };
 
 use fastmd_platform_linux_nautilus::{
-    DIAGNOSTIC_STATUS_EMITTED, DIAGNOSTIC_STATUS_PENDING_LIVE_PROBE, DisplayServerKind,
-    EDIT_LIFECYCLE_POLICY, EDIT_LIFECYCLE_RUNTIME_NOTE, FrontmostAppSnapshot,
-    FrontmostSurfaceRejection, HoverCandidate, HoverResolutionScope, HoveredEntityKind,
-    HoveredItemSnapshot, HoveredPresentationMode, MONITOR_SELECTION_POLICY,
-    MONITOR_SELECTION_RUNTIME_NOTE,
-    Monitor as PlatformMonitor, MonitorLayout as PlatformMonitorLayout, PREVIEW_PLACEMENT_POLICY,
-    PREVIEW_PLACEMENT_RUNTIME_NOTE, ScreenPoint as PlatformScreenPoint,
-    ScreenRect as PlatformScreenRect, UbuntuPreviewFeatureCoverageSummary,
-    UbuntuPreviewLoopValidationBundle, ValidationStatus, api_stack_for_display_server,
-    classify_live_frontmost_gate, classify_live_hovered_item, crate_slice_validation_notes,
-    display_server_label, frontmost_gate_pending_note, hovered_item_api_stack_for_display_server,
-    hovered_item_pending_note, ubuntu_live_validation_checklist_items,
-    ubuntu_parity_evidence_checklist_item, ubuntu_parity_evidence_pending_note,
-    ubuntu_parity_evidence_ready_note, ubuntu_parity_evidence_required_display_servers,
-    ubuntu_parity_evidence_review_artifact_basename,
-    ubuntu_preview_feature_coverage_summary, supported_surface_label,
+    api_stack_for_display_server, classify_live_frontmost_gate, classify_live_hovered_item,
+    crate_slice_validation_notes, display_server_label, frontmost_gate_pending_note,
+    hovered_item_api_stack_for_display_server, hovered_item_pending_note, supported_surface_label,
+    ubuntu_live_validation_checklist_items, ubuntu_parity_evidence_checklist_item,
+    ubuntu_parity_evidence_pending_note, ubuntu_parity_evidence_ready_note,
+    ubuntu_parity_evidence_required_display_servers,
+    ubuntu_parity_evidence_review_artifact_basename, ubuntu_preview_feature_coverage_summary,
+    DisplayServerKind, FrontmostAppSnapshot, FrontmostSurfaceRejection, HoverCandidate,
+    HoverResolutionScope, HoveredEntityKind, HoveredItemSnapshot, HoveredPresentationMode,
+    Monitor as PlatformMonitor, MonitorLayout as PlatformMonitorLayout,
+    ScreenPoint as PlatformScreenPoint, ScreenRect as PlatformScreenRect,
+    UbuntuPreviewFeatureCoverageSummary, UbuntuPreviewLoopValidationBundle, ValidationStatus,
+    DIAGNOSTIC_STATUS_EMITTED, DIAGNOSTIC_STATUS_PENDING_LIVE_PROBE, EDIT_LIFECYCLE_POLICY,
+    EDIT_LIFECYCLE_RUNTIME_NOTE, MONITOR_SELECTION_POLICY, MONITOR_SELECTION_RUNTIME_NOTE,
+    PREVIEW_PLACEMENT_POLICY, PREVIEW_PLACEMENT_RUNTIME_NOTE,
 };
-use fastmd_render::{MarkdownFeature, stage2_rendering_contract};
+use fastmd_render::{stage2_rendering_contract, MarkdownFeature};
 use serde::{Deserialize, Serialize};
 use tauri::{
     AppHandle, Emitter, Manager, Monitor as TauriMonitor, PhysicalPosition, PhysicalRect,
@@ -48,9 +47,15 @@ const LINUX_VALIDATION_EVIDENCE_STATUS_CROSS_SESSION_REVIEW_REQUIRED: &str =
     "cross-session-review-required";
 const LINUX_VALIDATION_EVIDENCE_STATUS_CROSS_SESSION_CAPTURED_AWAITING_REVIEW: &str =
     "cross-session-captured-awaiting-review";
+const LINUX_VALIDATION_EVIDENCE_STATUS_CROSS_SESSION_REVIEW_STALE: &str =
+    "cross-session-review-stale";
 const LINUX_VALIDATION_EVIDENCE_STATUS_CROSS_SESSION_REVIEWED_READY_TO_CLOSE: &str =
     "cross-session-reviewed-ready-to-close";
 const LINUX_HOVER_LIFECYCLE_NOTE: &str = "Linux hover lifecycle polls the desktop cursor, waits 1 second after the last pointer or hovered-target change, and only then opens or replaces the preview when Nautilus still resolves a Markdown file.";
+
+fn linux_validation_evidence_status_cross_session_review_required_owned() -> String {
+    LINUX_VALIDATION_EVIDENCE_STATUS_CROSS_SESSION_REVIEW_REQUIRED.to_owned()
+}
 
 #[derive(Clone, Copy, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -208,6 +213,8 @@ struct LinuxValidationEvidencePayload {
     missing_display_servers: Vec<String>,
     ready_display_server_reports: Vec<String>,
     reviewed_display_servers: Vec<String>,
+    review_artifact_present: bool,
+    review_artifact_matches_latest_reports: bool,
     review_artifact_markdown_path: Option<String>,
     review_artifact_json_path: Option<String>,
     reviewed_at_unix_ms: Option<u64>,
@@ -389,6 +396,8 @@ struct LinuxValidationReportPayload {
     anchor: Option<ScreenPoint>,
     ready_to_close_display_server_report: bool,
     cross_session_parity_evidence_ready: bool,
+    #[serde(default = "linux_validation_evidence_status_cross_session_review_required_owned")]
+    cross_session_parity_evidence_status: String,
     cross_session_parity_evidence_note: String,
     #[serde(default)]
     cross_session_required_display_servers: Vec<String>,
@@ -659,7 +668,8 @@ fn hot_interaction_surface_payload() -> Option<HotInteractionSurfacePayload> {
     Some(HotInteractionSurfacePayload {
         window_focus_strategy: "tauri show+set_focus on reveal and global re-open",
         dom_focus_target: ".shell root with tabindex=-1 after shell renders",
-        pointer_scroll_routing: "shared frontend wheel delta normalization routed into preview scroll",
+        pointer_scroll_routing:
+            "shared frontend wheel delta normalization routed into preview scroll",
     })
 }
 
@@ -726,7 +736,8 @@ fn linux_preview_placement_payload() -> Option<LinuxPreviewPlacementPayload> {
     }
 
     Some(LinuxPreviewPlacementPayload {
-        monitor_work_area_source: "tauri-runtime-wry linux monitor.work_area via GDK/GNOME workarea",
+        monitor_work_area_source:
+            "tauri-runtime-wry linux monitor.work_area via GDK/GNOME workarea",
         monitor_selection_policy: MONITOR_SELECTION_POLICY,
         coordinate_space: "desktop-space physical pixels",
         aspect_ratio: "4:3",
@@ -884,8 +895,10 @@ fn linux_validation_evidence_payload_for_directory(
     output_directory: &Path,
 ) -> LinuxValidationEvidencePayload {
     let required_display_servers = required_linux_validation_display_servers();
-    let mut latest_reports_by_display_server: BTreeMap<String, LinuxValidationEvidenceReportPayload> =
-        BTreeMap::new();
+    let mut latest_reports_by_display_server: BTreeMap<
+        String,
+        LinuxValidationEvidenceReportPayload,
+    > = BTreeMap::new();
 
     if let Ok(entries) = fs::read_dir(output_directory) {
         for entry in entries.flatten() {
@@ -942,25 +955,29 @@ fn linux_validation_evidence_payload_for_directory(
         .cloned()
         .collect();
 
-    let all_required_reports_captured =
-        missing_display_servers.is_empty() && latest_reports.len() == required_display_servers.len();
-    let all_required_reports_ready =
-        all_required_reports_captured
-            && ready_display_server_reports.len() == required_display_servers.len();
+    let all_required_reports_captured = missing_display_servers.is_empty()
+        && latest_reports.len() == required_display_servers.len();
+    let all_required_reports_ready = all_required_reports_captured
+        && ready_display_server_reports.len() == required_display_servers.len();
     let review_artifact = load_linux_validation_review_artifact(output_directory);
+    let review_artifact_present = review_artifact.is_some();
     let review_artifact_json_path = linux_validation_review_artifact_json_path(output_directory);
     let review_artifact_markdown_path =
         linux_validation_review_artifact_markdown_path(output_directory);
-    let ready_to_close_checklist_item = all_required_reports_ready
-        && review_artifact.as_ref().is_some_and(|review_artifact| {
+    let review_artifact_matches_latest_reports =
+        review_artifact.as_ref().is_some_and(|review_artifact| {
             linux_validation_review_artifact_matches_latest_reports(
                 review_artifact,
                 &latest_reports,
                 &required_display_servers,
             )
         });
+    let ready_to_close_checklist_item =
+        all_required_reports_ready && review_artifact_matches_latest_reports;
     let status = if ready_to_close_checklist_item {
         LINUX_VALIDATION_EVIDENCE_STATUS_CROSS_SESSION_REVIEWED_READY_TO_CLOSE
+    } else if all_required_reports_ready && review_artifact_present {
+        LINUX_VALIDATION_EVIDENCE_STATUS_CROSS_SESSION_REVIEW_STALE
     } else if all_required_reports_ready {
         LINUX_VALIDATION_EVIDENCE_STATUS_CROSS_SESSION_CAPTURED_AWAITING_REVIEW
     } else {
@@ -1013,6 +1030,8 @@ fn linux_validation_evidence_payload_for_directory(
             .as_ref()
             .map(|review_artifact| review_artifact.reviewed_display_servers.clone())
             .unwrap_or_default(),
+        review_artifact_present,
+        review_artifact_matches_latest_reports,
         review_artifact_markdown_path: review_artifact_markdown_path
             .is_file()
             .then(|| path_string(&review_artifact_markdown_path)),
@@ -1652,6 +1671,10 @@ fn linux_validation_report_markdown(report: &LinuxValidationReportPayload) -> St
             }
         ),
         format!(
+            "- Cross-session Ubuntu parity-evidence status: `{}`",
+            report.cross_session_parity_evidence_status
+        ),
+        format!(
             "- Cross-session Ubuntu parity-evidence note: `{}`",
             report.cross_session_parity_evidence_note
         ),
@@ -1799,6 +1822,11 @@ fn build_linux_validation_report_payload(
         .as_ref()
         .map(|payload| payload.ready_to_close_checklist_item)
         .unwrap_or(false);
+    let cross_session_parity_evidence_status = host_capabilities
+        .linux_validation_evidence
+        .as_ref()
+        .map(|payload| payload.status.clone())
+        .unwrap_or_else(linux_validation_evidence_status_cross_session_review_required_owned);
     let parity_checklist_item = ubuntu_parity_evidence_checklist_item().to_owned();
     let required_display_servers = host_capabilities
         .linux_validation_evidence
@@ -1847,6 +1875,7 @@ fn build_linux_validation_report_payload(
         anchor,
         ready_to_close_display_server_report,
         cross_session_parity_evidence_ready,
+        cross_session_parity_evidence_status,
         cross_session_parity_evidence_note,
         cross_session_required_display_servers: required_display_servers,
         cross_session_captured_display_servers: captured_display_servers,
@@ -2010,7 +2039,10 @@ fn desktop_shell_validation_snapshot_markdown(
         String::new(),
         "## Shell State".to_owned(),
         String::new(),
-        format!("- Document title: `{}`", snapshot.shell_state.document_title),
+        format!(
+            "- Document title: `{}`",
+            snapshot.shell_state.document_title
+        ),
         format!(
             "- Source document path: `{}`",
             snapshot
@@ -2143,23 +2175,21 @@ fn export_desktop_shell_validation_artifacts_to_directory(
     ));
 
     let linux_validation_report_markdown_path =
-        snapshot
-            .linux_validation_report
-            .as_ref()
-            .map(|report| {
-                output_directory.join(format!(
-                    "ubuntu-validation-report-{}-{}.md",
-                    validation_artifact_slug(&report.display_server),
-                    report.captured_at_unix_ms,
-                ))
-            });
-    let linux_validation_report_json_path = snapshot.linux_validation_report.as_ref().map(|report| {
-        output_directory.join(format!(
-            "ubuntu-validation-report-{}-{}.json",
-            validation_artifact_slug(&report.display_server),
-            report.captured_at_unix_ms,
-        ))
-    });
+        snapshot.linux_validation_report.as_ref().map(|report| {
+            output_directory.join(format!(
+                "ubuntu-validation-report-{}-{}.md",
+                validation_artifact_slug(&report.display_server),
+                report.captured_at_unix_ms,
+            ))
+        });
+    let linux_validation_report_json_path =
+        snapshot.linux_validation_report.as_ref().map(|report| {
+            output_directory.join(format!(
+                "ubuntu-validation-report-{}-{}.json",
+                validation_artifact_slug(&report.display_server),
+                report.captured_at_unix_ms,
+            ))
+        });
 
     if let (Some(report), Some(report_path)) = (
         snapshot.linux_validation_report.as_ref(),
@@ -2248,7 +2278,12 @@ fn export_linux_validation_review_signoff_to_directory(
     let reviewed_report_json_paths = validation_evidence
         .latest_reports
         .iter()
-        .map(|report| (report.display_server.clone(), report.report_json_path.clone()))
+        .map(|report| {
+            (
+                report.display_server.clone(),
+                report.report_json_path.clone(),
+            )
+        })
         .collect::<BTreeMap<_, _>>();
     let reviewed_report_markdown_paths = validation_evidence
         .latest_reports
@@ -2286,7 +2321,9 @@ fn export_linux_validation_review_signoff_to_directory(
         output_directory: path_string(output_directory),
         review_markdown_path: path_string(&review_markdown_path),
         review_json_path: path_string(&review_json_path),
-        linux_validation_evidence: linux_validation_evidence_payload_for_directory(output_directory),
+        linux_validation_evidence: linux_validation_evidence_payload_for_directory(
+            output_directory,
+        ),
     })
 }
 
@@ -2884,9 +2921,8 @@ fn refresh_linux_hovered_item_diagnostics(
             diagnostics.hovered_item.backend = Some(probe_backend);
             diagnostics.hovered_item.resolution_scope =
                 Some(hover_resolution_scope_label(snapshot.resolution_scope).to_owned());
-            diagnostics.hovered_item.presentation_mode = Some(
-                hovered_presentation_mode_label(snapshot.presentation_mode).to_owned(),
-            );
+            diagnostics.hovered_item.presentation_mode =
+                Some(hovered_presentation_mode_label(snapshot.presentation_mode).to_owned());
             diagnostics.hovered_item.entity_kind =
                 Some(hovered_entity_kind_label(snapshot.entity_kind).to_owned());
             diagnostics.hovered_item.item_name = snapshot.item_name.clone();
@@ -3506,117 +3542,113 @@ fn start_linux_hover_worker(app: AppHandle) {
         return;
     }
 
-    thread::spawn(move || {
-        loop {
-            thread::sleep(HOVER_POLL_INTERVAL);
+    thread::spawn(move || loop {
+        thread::sleep(HOVER_POLL_INTERVAL);
 
-            let Some(state) = app.try_state::<ShellBridgeState>() else {
-                break;
+        let Some(state) = app.try_state::<ShellBridgeState>() else {
+            break;
+        };
+
+        let anchor = match app.cursor_position() {
+            Ok(position) => ScreenPoint {
+                x: position.x,
+                y: position.y,
+            },
+            Err(_) => continue,
+        };
+        let observation = collect_linux_hover_observation(anchor);
+        let now = Instant::now();
+        let current_preview_path = current_preview_source_document_path(&state);
+
+        let step = {
+            let mut runtime = state.linux_hover_runtime.lock().unwrap();
+            advance_linux_hover_lifecycle(
+                &mut runtime,
+                &observation,
+                current_preview_path.as_deref(),
+                now,
+            )
+        };
+
+        if step.observation_changed || step.action.is_some() {
+            let preview_visible = state.linux_hover_runtime.lock().unwrap().preview_visible;
+            let preview_path = if preview_visible {
+                current_preview_source_document_path(&state)
+            } else {
+                None
             };
-
-            let anchor = match app.cursor_position() {
-                Ok(position) => ScreenPoint {
-                    x: position.x,
-                    y: position.y,
-                },
-                Err(_) => continue,
-            };
-            let observation = collect_linux_hover_observation(anchor);
-            let now = Instant::now();
-            let current_preview_path = current_preview_source_document_path(&state);
-
-            let step = {
-                let mut runtime = state.linux_hover_runtime.lock().unwrap();
-                advance_linux_hover_lifecycle(
-                    &mut runtime,
-                    &observation,
-                    current_preview_path.as_deref(),
-                    now,
-                )
-            };
-
-            if step.observation_changed || step.action.is_some() {
-                let preview_visible = state.linux_hover_runtime.lock().unwrap().preview_visible;
-                let preview_path = if preview_visible {
-                    current_preview_source_document_path(&state)
-                } else {
-                    None
+            {
+                let mut host_capabilities = state.host_capabilities.lock().unwrap();
+                let last_action = match &step.action {
+                    Some(HoverLifecycleAction::Open { .. }) => Some("opened".to_owned()),
+                    Some(HoverLifecycleAction::Replace { .. }) => Some("replaced".to_owned()),
+                    Some(HoverLifecycleAction::SuppressSameItem) => {
+                        Some("suppressed-same-item".to_owned())
+                    }
+                    None => None,
                 };
-                {
-                    let mut host_capabilities = state.host_capabilities.lock().unwrap();
-                    let last_action = match &step.action {
-                        Some(HoverLifecycleAction::Open { .. }) => Some("opened".to_owned()),
-                        Some(HoverLifecycleAction::Replace { .. }) => Some("replaced".to_owned()),
-                        Some(HoverLifecycleAction::SuppressSameItem) => {
-                            Some("suppressed-same-item".to_owned())
-                        }
-                        None => None,
+                update_linux_hover_lifecycle_diagnostics(
+                    &mut host_capabilities,
+                    Some(observation.anchor),
+                    observation.observed_markdown_path.clone(),
+                    preview_visible,
+                    preview_path,
+                    last_action,
+                );
+            }
+            let _ = emit_host_capabilities(&app, &state);
+        }
+
+        let Some(action) = step.action else {
+            continue;
+        };
+        let Some(app_state) = app.try_state::<ShellBridgeState>() else {
+            continue;
+        };
+        if *app_state.is_editing.lock().unwrap() {
+            continue;
+        }
+
+        match action {
+            HoverLifecycleAction::Open { path, anchor } => {
+                let app_handle = app.clone();
+                let _ = app.run_on_main_thread(move || {
+                    let Some(window) = app_handle.get_webview_window(PREVIEW_WINDOW_LABEL) else {
+                        return;
                     };
-                    update_linux_hover_lifecycle_diagnostics(
-                        &mut host_capabilities,
-                        Some(observation.anchor),
-                        observation.observed_markdown_path.clone(),
-                        preview_visible,
-                        preview_path,
-                        last_action,
+                    let Some(state) = app_handle.try_state::<ShellBridgeState>() else {
+                        return;
+                    };
+                    let _ = apply_hovered_markdown_document(
+                        &app_handle,
+                        &window,
+                        &state,
+                        &path,
+                        anchor,
+                        "opened",
                     );
-                }
-                let _ = emit_host_capabilities(&app, &state);
+                });
             }
-
-            let Some(action) = step.action else {
-                continue;
-            };
-            let Some(app_state) = app.try_state::<ShellBridgeState>() else {
-                continue;
-            };
-            if *app_state.is_editing.lock().unwrap() {
-                continue;
+            HoverLifecycleAction::Replace { path, anchor } => {
+                let app_handle = app.clone();
+                let _ = app.run_on_main_thread(move || {
+                    let Some(window) = app_handle.get_webview_window(PREVIEW_WINDOW_LABEL) else {
+                        return;
+                    };
+                    let Some(state) = app_handle.try_state::<ShellBridgeState>() else {
+                        return;
+                    };
+                    let _ = apply_hovered_markdown_document(
+                        &app_handle,
+                        &window,
+                        &state,
+                        &path,
+                        anchor,
+                        "replaced",
+                    );
+                });
             }
-
-            match action {
-                HoverLifecycleAction::Open { path, anchor } => {
-                    let app_handle = app.clone();
-                    let _ = app.run_on_main_thread(move || {
-                        let Some(window) = app_handle.get_webview_window(PREVIEW_WINDOW_LABEL)
-                        else {
-                            return;
-                        };
-                        let Some(state) = app_handle.try_state::<ShellBridgeState>() else {
-                            return;
-                        };
-                        let _ = apply_hovered_markdown_document(
-                            &app_handle,
-                            &window,
-                            &state,
-                            &path,
-                            anchor,
-                            "opened",
-                        );
-                    });
-                }
-                HoverLifecycleAction::Replace { path, anchor } => {
-                    let app_handle = app.clone();
-                    let _ = app.run_on_main_thread(move || {
-                        let Some(window) = app_handle.get_webview_window(PREVIEW_WINDOW_LABEL)
-                        else {
-                            return;
-                        };
-                        let Some(state) = app_handle.try_state::<ShellBridgeState>() else {
-                            return;
-                        };
-                        let _ = apply_hovered_markdown_document(
-                            &app_handle,
-                            &window,
-                            &state,
-                            &path,
-                            anchor,
-                            "replaced",
-                        );
-                    });
-                }
-                HoverLifecycleAction::SuppressSameItem => {}
-            }
+            HoverLifecycleAction::SuppressSameItem => {}
         }
     });
 }
@@ -4018,7 +4050,9 @@ mod tests {
     #[test]
     fn linux_preview_window_drag_surface_metadata_is_only_advertised_on_linux_targets() {
         let shell_state = ShellBridgeState::new();
-        let drag_surface = shell_state.snapshot_host_capabilities().preview_window_drag_surface;
+        let drag_surface = shell_state
+            .snapshot_host_capabilities()
+            .preview_window_drag_surface;
 
         assert_eq!(drag_surface.is_some(), cfg!(target_os = "linux"));
         if let Some(drag_surface) = drag_surface {
@@ -4157,6 +4191,7 @@ mod tests {
                 payload.status.as_str(),
                 LINUX_VALIDATION_EVIDENCE_STATUS_CROSS_SESSION_REVIEW_REQUIRED
                     | LINUX_VALIDATION_EVIDENCE_STATUS_CROSS_SESSION_CAPTURED_AWAITING_REVIEW
+                    | LINUX_VALIDATION_EVIDENCE_STATUS_CROSS_SESSION_REVIEW_STALE
             ));
             assert_eq!(
                 payload.checklist_item,
@@ -4183,6 +4218,8 @@ mod tests {
         assert!(payload.captured_display_servers.is_empty());
         assert_eq!(payload.missing_display_servers, vec!["wayland", "x11"]);
         assert!(payload.ready_display_server_reports.is_empty());
+        assert!(!payload.review_artifact_present);
+        assert!(!payload.review_artifact_matches_latest_reports);
         assert!(payload.latest_reports.is_empty());
 
         cleanup_dir(&output_directory);
@@ -4199,11 +4236,9 @@ mod tests {
                 "Match macOS product semantics exactly; the display server changes host probing only."
             );
             assert!(payload.wayland_frontmost_api_stack.contains("AT-SPI"));
-            assert!(
-                payload
-                    .x11_frontmost_api_stack
-                    .contains("_NET_ACTIVE_WINDOW")
-            );
+            assert!(payload
+                .x11_frontmost_api_stack
+                .contains("_NET_ACTIVE_WINDOW"));
         } else {
             assert!(payload.is_none());
         }
@@ -4406,11 +4441,9 @@ mod tests {
         assert_eq!(payload.aspect_ratio, PREVIEW_ASPECT_RATIO);
         assert!(payload.supported_features.contains(&"mermaid".to_owned()));
         assert!(payload.supported_features.contains(&"math".to_owned()));
-        assert!(
-            payload
-                .supported_features
-                .contains(&"html-block".to_owned())
-        );
+        assert!(payload
+            .supported_features
+            .contains(&"html-block".to_owned()));
     }
 
     #[test]
@@ -4640,11 +4673,13 @@ mod tests {
         assert_eq!(report.display_server, "wayland");
         assert!(report.ready_to_close_display_server_report);
         assert!(!report.cross_session_parity_evidence_ready);
-        assert!(
-            report
-                .cross_session_parity_evidence_note
-                .contains("Wayland and X11")
+        assert_eq!(
+            report.cross_session_parity_evidence_status,
+            LINUX_VALIDATION_EVIDENCE_STATUS_CROSS_SESSION_REVIEW_REQUIRED
         );
+        assert!(report
+            .cross_session_parity_evidence_note
+            .contains("Wayland and X11"));
         assert_eq!(
             report.cross_session_required_display_servers,
             vec!["wayland", "x11"]
@@ -4667,21 +4702,18 @@ mod tests {
             item == "Record Ubuntu-specific validation evidence proving one-to-one parity with macOS for each feature above"
         }));
         assert_eq!(report.blocked_checklist_items.len(), 1);
-        assert!(
-            report
-                .markdown
-                .contains("Active display-server report readiness: `ready-to-close`")
-        );
-        assert!(
-            report
-                .markdown
-                .contains("Cross-session Ubuntu parity-evidence readiness: `not-ready-to-close`")
-        );
-        assert!(
-            report
-                .markdown
-                .contains("Cross-session missing display servers: `wayland, x11`")
-        );
+        assert!(report
+            .markdown
+            .contains("Active display-server report readiness: `ready-to-close`"));
+        assert!(report
+            .markdown
+            .contains("Cross-session Ubuntu parity-evidence readiness: `not-ready-to-close`"));
+        assert!(report.markdown.contains(
+            "Cross-session Ubuntu parity-evidence status: `cross-session-review-required`"
+        ));
+        assert!(report
+            .markdown
+            .contains("Cross-session missing display servers: `wayland, x11`"));
     }
 
     #[test]
@@ -4712,11 +4744,9 @@ mod tests {
         assert!(report.blocked_checklist_items.iter().any(|item| {
             item == "Record Ubuntu-specific validation evidence proving one-to-one parity with macOS for each feature above"
         }));
-        assert!(
-            report
-                .markdown
-                .contains("Cross-session Ubuntu parity-evidence readiness: `not-ready-to-close`")
-        );
+        assert!(report
+            .markdown
+            .contains("Cross-session Ubuntu parity-evidence readiness: `not-ready-to-close`"));
     }
 
     #[test]
@@ -4731,7 +4761,10 @@ mod tests {
         );
 
         assert!(snapshot.captured_at_unix_ms > 0);
-        assert_eq!(snapshot.shell_state.document_title, shell_state.document_title);
+        assert_eq!(
+            snapshot.shell_state.document_title,
+            shell_state.document_title
+        );
         assert_eq!(
             snapshot.host_capabilities.platform_id,
             host_capabilities.platform_id
@@ -4754,7 +4787,10 @@ mod tests {
             build_desktop_shell_validation_snapshot_payload(&shell_state, &host_capabilities, None);
 
         assert!(snapshot.captured_at_unix_ms > 0);
-        assert_eq!(snapshot.shell_state.document_title, shell_state.document_title);
+        assert_eq!(
+            snapshot.shell_state.document_title,
+            shell_state.document_title
+        );
         assert_eq!(
             snapshot.host_capabilities.platform_id,
             host_capabilities.platform_id
@@ -4773,33 +4809,27 @@ mod tests {
         );
         let output_directory = temp_file_path("validation-artifacts");
 
-        let export = export_desktop_shell_validation_artifacts_to_directory(
-            &output_directory,
-            &snapshot,
-        )
-        .expect("validation artifacts should export");
+        let export =
+            export_desktop_shell_validation_artifacts_to_directory(&output_directory, &snapshot)
+                .expect("validation artifacts should export");
 
         assert_eq!(export.output_directory, path_string(&output_directory));
         assert_eq!(export.display_server.as_deref(), Some("wayland"));
         assert!(Path::new(&export.snapshot_markdown_path).exists());
-        assert!(
-            Path::new(
-                export
-                    .linux_validation_report_markdown_path
-                    .as_deref()
-                    .expect("linux validation report path")
-            )
-            .exists()
-        );
-        assert!(
-            Path::new(
-                export
-                    .linux_validation_report_json_path
-                    .as_deref()
-                    .expect("linux validation report json path")
-            )
-            .exists()
-        );
+        assert!(Path::new(
+            export
+                .linux_validation_report_markdown_path
+                .as_deref()
+                .expect("linux validation report path")
+        )
+        .exists());
+        assert!(Path::new(
+            export
+                .linux_validation_report_json_path
+                .as_deref()
+                .expect("linux validation report json path")
+        )
+        .exists());
         assert_eq!(
             export
                 .linux_validation_evidence
@@ -4869,8 +4899,8 @@ mod tests {
     }
 
     #[test]
-    fn export_desktop_shell_validation_artifacts_tracks_cross_session_wayland_and_x11_capture_progress()
-    {
+    fn export_desktop_shell_validation_artifacts_tracks_cross_session_wayland_and_x11_capture_progress(
+    ) {
         let shell_state = initial_shell_state();
         let output_directory = temp_file_path("validation-evidence-summary");
 
@@ -4917,6 +4947,8 @@ mod tests {
             linux_validation_evidence.status,
             LINUX_VALIDATION_EVIDENCE_STATUS_CROSS_SESSION_CAPTURED_AWAITING_REVIEW
         );
+        assert!(!linux_validation_evidence.review_artifact_present);
+        assert!(!linux_validation_evidence.review_artifact_matches_latest_reports);
         assert_eq!(
             linux_validation_evidence.captured_display_servers,
             vec!["wayland".to_owned(), "x11".to_owned()]
@@ -4927,11 +4959,9 @@ mod tests {
             vec!["wayland".to_owned(), "x11".to_owned()]
         );
         assert_eq!(linux_validation_evidence.latest_reports.len(), 2);
-        assert!(
-            linux_validation_evidence
-                .note
-                .contains("reviewed and explicitly signed off")
-        );
+        assert!(linux_validation_evidence
+            .note
+            .contains("reviewed and explicitly signed off"));
 
         cleanup_dir(&output_directory);
     }
@@ -4946,8 +4976,11 @@ mod tests {
             &linux_validation_host_capabilities("wayland"),
             Some(ScreenPoint { x: 240.0, y: 180.0 }),
         );
-        export_desktop_shell_validation_artifacts_to_directory(&output_directory, &wayland_snapshot)
-            .expect("wayland validation artifacts should export");
+        export_desktop_shell_validation_artifacts_to_directory(
+            &output_directory,
+            &wayland_snapshot,
+        )
+        .expect("wayland validation artifacts should export");
 
         let x11_snapshot = build_desktop_shell_validation_snapshot_payload(
             &shell_state,
@@ -4968,7 +5001,17 @@ mod tests {
             signoff.linux_validation_evidence.status,
             LINUX_VALIDATION_EVIDENCE_STATUS_CROSS_SESSION_REVIEWED_READY_TO_CLOSE
         );
-        assert!(signoff.linux_validation_evidence.ready_to_close_checklist_item);
+        assert!(
+            signoff
+                .linux_validation_evidence
+                .ready_to_close_checklist_item
+        );
+        assert!(signoff.linux_validation_evidence.review_artifact_present);
+        assert!(
+            signoff
+                .linux_validation_evidence
+                .review_artifact_matches_latest_reports
+        );
         assert_eq!(
             signoff.linux_validation_evidence.reviewed_by.as_deref(),
             Some("worker-2")
@@ -5006,8 +5049,11 @@ mod tests {
             &linux_validation_host_capabilities("wayland"),
             Some(ScreenPoint { x: 240.0, y: 180.0 }),
         );
-        export_desktop_shell_validation_artifacts_to_directory(&output_directory, &wayland_snapshot)
-            .expect("wayland validation artifacts should export");
+        export_desktop_shell_validation_artifacts_to_directory(
+            &output_directory,
+            &wayland_snapshot,
+        )
+        .expect("wayland validation artifacts should export");
 
         let x11_snapshot = build_desktop_shell_validation_snapshot_payload(
             &shell_state,
@@ -5039,9 +5085,11 @@ mod tests {
         let evidence = linux_validation_evidence_payload_for_directory(&output_directory);
         assert_eq!(
             evidence.status,
-            LINUX_VALIDATION_EVIDENCE_STATUS_CROSS_SESSION_CAPTURED_AWAITING_REVIEW
+            LINUX_VALIDATION_EVIDENCE_STATUS_CROSS_SESSION_REVIEW_STALE
         );
         assert!(!evidence.ready_to_close_checklist_item);
+        assert!(evidence.review_artifact_present);
+        assert!(!evidence.review_artifact_matches_latest_reports);
         assert!(evidence
             .note
             .contains("no longer matches the latest ready report set"));
@@ -5107,6 +5155,8 @@ mod tests {
                 missing_display_servers: vec!["wayland".to_owned(), "x11".to_owned()],
                 ready_display_server_reports: Vec::new(),
                 reviewed_display_servers: Vec::new(),
+                review_artifact_present: false,
+                review_artifact_matches_latest_reports: false,
                 review_artifact_markdown_path: None,
                 review_artifact_json_path: None,
                 reviewed_at_unix_ms: None,

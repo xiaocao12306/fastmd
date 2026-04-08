@@ -21,6 +21,7 @@ import {
   readLinuxValidationEvidenceLatestReportByDisplayServer,
   readLinuxValidationEvidenceLatestReportChecklistStatuses,
   readLinuxValidationEvidenceLatestReports,
+  readLinuxValidationEvidenceReviewArtifactState,
   readPreviewWindowDragSurface,
   readSharedRenderingPipeline,
   readSharedRenderingSurface,
@@ -662,6 +663,9 @@ export class PreviewShellApp {
 
   private syncLinuxValidationEvidenceAttributes(): void {
     const validationEvidence = readLinuxValidationEvidence(this.hostCapabilities);
+    const reviewArtifactState = readLinuxValidationEvidenceReviewArtifactState(
+      this.hostCapabilities,
+    );
     const clearDisplayServerReportData = (prefix: string): void => {
       delete this.shellNode.dataset[`${prefix}CapturedAtUnixMs`];
       delete this.shellNode.dataset[`${prefix}ReadyToCloseDisplayServerReport`];
@@ -682,6 +686,8 @@ export class PreviewShellApp {
       delete this.shellNode.dataset.linuxValidationEvidenceReadyDisplayServerReports;
       delete this.shellNode.dataset.linuxValidationEvidenceReviewedDisplayServers;
       delete this.shellNode.dataset.linuxValidationEvidenceReadyToCloseChecklistItem;
+      delete this.shellNode.dataset.linuxValidationEvidenceReviewArtifactPresent;
+      delete this.shellNode.dataset.linuxValidationEvidenceReviewArtifactMatchesLatestReports;
       delete this.shellNode.dataset.linuxValidationEvidenceReviewArtifactMarkdownPath;
       delete this.shellNode.dataset.linuxValidationEvidenceReviewArtifactJsonPath;
       delete this.shellNode.dataset.linuxValidationEvidenceReviewedAtUnixMs;
@@ -723,6 +729,14 @@ export class PreviewShellApp {
     this.setShellData(
       "linuxValidationEvidenceReadyToCloseChecklistItem",
       validationEvidence.readyToCloseChecklistItem ?? false,
+    );
+    this.setShellData(
+      "linuxValidationEvidenceReviewArtifactPresent",
+      reviewArtifactState?.reviewArtifactPresent ?? false,
+    );
+    this.setShellData(
+      "linuxValidationEvidenceReviewArtifactMatchesLatestReports",
+      reviewArtifactState?.reviewArtifactMatchesLatestReports ?? false,
     );
     this.setShellData(
       "linuxValidationEvidenceReviewArtifactMarkdownPath",

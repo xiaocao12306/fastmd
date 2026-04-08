@@ -22,6 +22,7 @@ import {
   exportLinuxValidationReviewSignoff,
   listenToShellState,
   readLinuxFrontmostTextInputState,
+  readLinuxValidationEvidenceReviewArtifactState,
   readLinuxValidationEvidenceLatestReportChecklistStatuses,
   readLinuxValidationEvidenceLatestReportByDisplayServer,
   readLinuxHoveredItemPresentationMode,
@@ -76,6 +77,7 @@ describe("FastMD Tauri bridge", () => {
       anchor: { x: 400, y: 220 },
       readyToCloseDisplayServerReport: true,
       crossSessionParityEvidenceReady: false,
+      crossSessionParityEvidenceStatus: "cross-session-review-required",
       crossSessionParityEvidenceNote:
         "Single-session validation reports can only prove one live Ubuntu display server at a time.",
       crossSessionRequiredDisplayServers: ["wayland", "x11"],
@@ -127,6 +129,8 @@ describe("FastMD Tauri bridge", () => {
         capturedDisplayServers: ["wayland"],
         missingDisplayServers: ["x11"],
         readyDisplayServerReports: ["wayland"],
+        reviewArtifactPresent: false,
+        reviewArtifactMatchesLatestReports: false,
         latestReports: [
           {
             displayServer: "wayland",
@@ -184,6 +188,8 @@ describe("FastMD Tauri bridge", () => {
         missingDisplayServers: [],
         readyDisplayServerReports: ["wayland", "x11"],
         reviewedDisplayServers: ["wayland", "x11"],
+        reviewArtifactPresent: true,
+        reviewArtifactMatchesLatestReports: true,
         reviewArtifactMarkdownPath:
           "/repo/Docs/Test_Logs/ubuntu-validation-review-signoff.md",
         reviewArtifactJsonPath:
@@ -341,6 +347,8 @@ describe("FastMD Tauri bridge", () => {
           capturedDisplayServers: ["wayland"],
           missingDisplayServers: ["x11"],
           readyDisplayServerReports: ["wayland"],
+          reviewArtifactPresent: false,
+          reviewArtifactMatchesLatestReports: false,
           latestReports: [
             {
               displayServer: "wayland",
@@ -380,6 +388,37 @@ describe("FastMD Tauri bridge", () => {
     ]);
   });
 
+  it("extracts hidden review-artifact freshness state from host capabilities", () => {
+    const reviewState = readLinuxValidationEvidenceReviewArtifactState({
+      ...demoBootstrapPayload.hostCapabilities,
+      linuxValidationEvidence: {
+        status: "cross-session-review-stale",
+        checklistItem:
+          "Record Ubuntu-specific validation evidence proving one-to-one parity with macOS for each feature above",
+        note:
+          "Wayland and X11 live Ubuntu validation reports now exist, but the saved review sign-off no longer matches the latest ready report set.",
+        readyToCloseChecklistItem: false,
+        requiredDisplayServers: ["wayland", "x11"],
+        capturedDisplayServers: ["wayland", "x11"],
+        missingDisplayServers: [],
+        readyDisplayServerReports: ["wayland", "x11"],
+        reviewedDisplayServers: ["wayland", "x11"],
+        reviewArtifactPresent: true,
+        reviewArtifactMatchesLatestReports: false,
+        reviewArtifactMarkdownPath:
+          "/repo/Docs/Test_Logs/ubuntu-validation-review-signoff.md",
+        reviewArtifactJsonPath:
+          "/repo/Docs/Test_Logs/ubuntu-validation-review-signoff.json",
+        latestReports: [],
+      },
+    });
+
+    expect(reviewState).toEqual({
+      reviewArtifactPresent: true,
+      reviewArtifactMatchesLatestReports: false,
+    });
+  });
+
   it("extracts the cached checklist-status matrix for one display server", () => {
     const checklistStatuses = readLinuxValidationEvidenceLatestReportChecklistStatuses(
       {
@@ -394,6 +433,8 @@ describe("FastMD Tauri bridge", () => {
           capturedDisplayServers: ["wayland"],
           missingDisplayServers: ["x11"],
           readyDisplayServerReports: ["wayland"],
+          reviewArtifactPresent: false,
+          reviewArtifactMatchesLatestReports: false,
           latestReports: [
             {
               displayServer: "wayland",

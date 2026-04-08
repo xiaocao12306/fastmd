@@ -693,6 +693,8 @@ _Worker 2 note (2026-04-09): the live Nautilus hover probe now mirrors the macOS
 
 _Worker 2 note (2026-04-09): the hidden desktop-shell evidence lane now supports an explicit Ubuntu review-signoff export that writes `Docs/Test_Logs/ubuntu-validation-review-signoff.{md,json}` and only flips the hidden cross-session evidence state to ready after the latest Wayland and X11 reports are both individually ready and explicitly reviewed. The Layer 7 parity-evidence checklist item still remains open until those real-machine captures exist and the blueprint/todo are updated honestly._
 
+_Worker 2 note (2026-04-09): the hidden Ubuntu evidence lane now distinguishes `cross-session-captured-awaiting-review` from `cross-session-review-stale`, exposes review-artifact freshness booleans in hidden shell metadata, and writes the explicit cross-session review status into exported Ubuntu validation reports so reviewers can tell whether a saved sign-off is missing, stale after newer captures, or still current without over-claiming Layer 7 closure._
+
 ### Layer 8 — Cross-Platform macOS-Parity Validation Closure
 
 - [ ] Add a root verification flow that runs the macOS Swift checks plus the Stage 2 Rust/Tauri checks

@@ -14,6 +14,7 @@ export type LinuxValidationSectionStatus = "pass" | "fail" | "not-captured" | st
 export type LinuxValidationEvidenceStatus =
   | "cross-session-review-required"
   | "cross-session-captured-awaiting-review"
+  | "cross-session-review-stale"
   | "cross-session-reviewed-ready-to-close"
   | string;
 export type LinuxHoverResolutionScope =
@@ -157,6 +158,8 @@ export interface LinuxValidationEvidence {
   missingDisplayServers: string[];
   readyDisplayServerReports: string[];
   reviewedDisplayServers?: string[];
+  reviewArtifactPresent?: boolean | null;
+  reviewArtifactMatchesLatestReports?: boolean | null;
   reviewArtifactMarkdownPath?: string | null;
   reviewArtifactJsonPath?: string | null;
   reviewedAtUnixMs?: number | null;
@@ -297,6 +300,7 @@ export interface LinuxValidationReport {
   anchor?: ScreenPoint | null;
   readyToCloseDisplayServerReport: boolean;
   crossSessionParityEvidenceReady: boolean;
+  crossSessionParityEvidenceStatus: LinuxValidationEvidenceStatus;
   crossSessionParityEvidenceNote: string;
   crossSessionRequiredDisplayServers: string[];
   crossSessionCapturedDisplayServers: string[];
