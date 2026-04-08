@@ -5,11 +5,12 @@ use std::io::Write;
 use std::process::{Command, Stdio};
 
 use fastmd_contracts::{
-    MacOsPreviewFeature, PlatformId, PreviewFeatureCoverageLane, ScreenPoint,
-    ValidationCaptureProvenance, ValidationHostEnvironment, macos_preview_feature_list,
-    preview_feature_coverage_from_records, preview_feature_coverage_lanes,
-    preview_feature_coverage_record_gaps_against_reference,
+    macos_preview_feature_list, preview_feature_coverage_from_records,
+    preview_feature_coverage_lanes, preview_feature_coverage_record_gaps_against_reference,
     preview_feature_coverage_records_match_reference,
+    preview_feature_real_host_evidence_requirements, MacOsPreviewFeature, PlatformId,
+    PreviewFeatureCoverageLane, RealHostEvidenceRequirement, ScreenPoint,
+    ValidationCaptureProvenance, ValidationHostEnvironment,
 };
 use fastmd_core::{
     monitor_selection_mode, select_monitor_for_anchor, selected_monitor_matches_reference,
@@ -17,12 +18,12 @@ use fastmd_core::{
 #[cfg(target_os = "windows")]
 use serde::Deserialize;
 
+use crate::{
+    windows_preview_loop_feature_coverage_records, FrontmostSurfaceProbe, HoveredItemProbeOutcome,
+    WindowsCoordinateTranslation, MACOS_REFERENCE_BEHAVIOR,
+};
 #[cfg(target_os = "windows")]
 use crate::{AdapterError, ExplorerAdapter};
-use crate::{
-    FrontmostSurfaceProbe, HoveredItemProbeOutcome, MACOS_REFERENCE_BEHAVIOR,
-    WindowsCoordinateTranslation, windows_preview_loop_feature_coverage_records,
-};
 
 const FRONTMOST_CHECKLIST_ITEMS: [&str; 1] =
     ["Record validation evidence for frontmost Explorer detection on a real Windows 11 machine"];
@@ -215,7 +216,7 @@ pub fn build_windows_validation_evidence_report(
     let hover_section = build_hover_section(&environment, provenance, frontmost, hover);
     let coordinate_section = build_coordinate_section(&environment, provenance, translation);
     let feature_coverage_section =
-        build_feature_coverage_section(&[&frontmost_section, &hover_section, &coordinate_section]);
+        build_feature_coverage_section(&frontmost_section, &hover_section, &coordinate_section);
 
     WindowsValidationEvidenceReport {
         target: WINDOWS_VALIDATION_REPORT_TARGET,
@@ -232,8 +233,8 @@ pub fn build_windows_validation_evidence_report(
 }
 
 #[cfg(target_os = "windows")]
-pub fn capture_live_windows_validation_evidence_report()
--> Result<WindowsValidationEvidenceReport, AdapterError> {
+pub fn capture_live_windows_validation_evidence_report(
+) -> Result<WindowsValidationEvidenceReport, AdapterError> {
     let adapter = ExplorerAdapter::new();
     let environment = probe_windows_validation_environment().map_err(|message| {
         AdapterError::HostProbeFailed {
@@ -472,8 +473,11 @@ fn build_coordinate_section(
 }
 
 fn build_feature_coverage_section(
-    prerequisite_sections: &[&ValidationEvidenceSection],
+    frontmost_section: &ValidationEvidenceSection,
+    hover_section: &ValidationEvidenceSection,
+    coordinate_section: &ValidationEvidenceSection,
 ) -> ValidationEvidenceSection {
+    let prerequisite_sections = [frontmost_section, hover_section, coordinate_section];
     let coverage_records = windows_preview_loop_feature_coverage_records();
     let covered_features = preview_feature_coverage_from_records(&coverage_records);
     let covered_set: BTreeSet<_> = covered_features.iter().copied().collect();
@@ -489,6 +493,12 @@ fn build_feature_coverage_section(
         covered_features.len(),
         macos_preview_feature_list().len()
     )];
+    let real_host_requirements =
+        preview_feature_real_host_evidence_requirements(macos_preview_feature_list());
+    details.push(format!(
+        "Real-host evidence requirements referenced by the macOS feature list: `{}`.",
+        real_host_requirement_label_list(&real_host_requirements)
+    ));
 
     if matches_reference {
         details.push(
@@ -520,10 +530,17 @@ fn build_feature_coverage_section(
             "missing"
         };
         let lanes = preview_feature_coverage_lanes(&coverage_records, *feature);
+        let real_host_requirements = feature.real_host_evidence_requirements();
         details.push(format!(
-            "Reference feature `{}`: automated lanes `{}`; status `{status}`",
+            "Reference feature `{}`: automated lanes `{}`; automated status `{status}`; real-host evidence `{}`",
             feature.blueprint_label(),
             coverage_lane_label_list(&lanes),
+            real_host_requirement_status_label_list(
+                real_host_requirements,
+                frontmost_section,
+                hover_section,
+                coordinate_section,
+            ),
         ));
     }
 
@@ -769,6 +786,62 @@ fn coverage_lane_label_list(lanes: &[PreviewFeatureCoverageLane]) -> String {
         .join(", ")
 }
 
+fn real_host_requirement_label_list(requirements: &[RealHostEvidenceRequirement]) -> String {
+    if requirements.is_empty() {
+        return "none".to_string();
+    }
+
+    requirements
+        .iter()
+        .map(|requirement| requirement.label())
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+fn real_host_requirement_status_label_list(
+    requirements: &[RealHostEvidenceRequirement],
+    frontmost_section: &ValidationEvidenceSection,
+    hover_section: &ValidationEvidenceSection,
+    coordinate_section: &ValidationEvidenceSection,
+) -> String {
+    if requirements.is_empty() {
+        return "not required beyond automated parity coverage".to_string();
+    }
+
+    requirements
+        .iter()
+        .map(|requirement| {
+            format!(
+                "{} ({})",
+                requirement.label(),
+                real_host_requirement_status(
+                    *requirement,
+                    frontmost_section,
+                    hover_section,
+                    coordinate_section,
+                )
+                .label(),
+            )
+        })
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+fn real_host_requirement_status(
+    requirement: RealHostEvidenceRequirement,
+    frontmost_section: &ValidationEvidenceSection,
+    hover_section: &ValidationEvidenceSection,
+    coordinate_section: &ValidationEvidenceSection,
+) -> EvidenceSectionStatus {
+    match requirement {
+        RealHostEvidenceRequirement::FrontmostFileManagerDetection => frontmost_section.status,
+        RealHostEvidenceRequirement::ExactHoveredMarkdownResolution => hover_section.status,
+        RealHostEvidenceRequirement::MonitorSelectionAndCoordinateTranslation => {
+            coordinate_section.status
+        }
+    }
+}
+
 #[cfg(target_os = "windows")]
 fn normalize_optional_string(value: Option<String>) -> Option<String> {
     value.and_then(|value| {
@@ -850,12 +923,12 @@ mod tests {
     };
 
     use super::{
-        EvidenceSectionStatus, WindowsValidationEvidenceReport,
-        build_windows_validation_evidence_report,
+        build_windows_validation_evidence_report, EvidenceSectionStatus,
+        WindowsValidationEvidenceReport,
     };
     use crate::{
         ExplorerAdapter, FrontmostWindowSnapshot, HoverCandidate, HoverCandidateSource,
-        HoveredExplorerItemSnapshot, WINDOWS_COORDINATE_API_STACK, WindowsCoordinateTranslation,
+        HoveredExplorerItemSnapshot, WindowsCoordinateTranslation, WINDOWS_COORDINATE_API_STACK,
     };
 
     #[derive(Debug)]
@@ -1010,8 +1083,8 @@ mod tests {
     }
 
     #[test]
-    fn report_marks_all_sections_pass_when_real_host_provenance_and_probe_inputs_are_parity_compliant()
-     {
+    fn report_marks_all_sections_pass_when_real_host_provenance_and_probe_inputs_are_parity_compliant(
+    ) {
         let report = parity_compliant_report(ValidationCaptureProvenance::RealHostSession);
 
         assert_eq!(report.sections.len(), 4);
@@ -1065,11 +1138,9 @@ mod tests {
             report.sections[3].status,
             EvidenceSectionStatus::NotCaptured
         );
-        assert!(
-            report
-                .to_markdown()
-                .contains("does not satisfy the Layer 6 target `Windows 11 + Explorer only`.")
-        );
+        assert!(report
+            .to_markdown()
+            .contains("does not satisfy the Layer 6 target `Windows 11 + Explorer only`."));
     }
 
     #[test]
@@ -1145,16 +1216,12 @@ mod tests {
             report.sections[3].status,
             EvidenceSectionStatus::NotCaptured
         );
-        assert!(
-            report
-                .to_markdown()
-                .contains("Selected monitor matches shared-core placement rule: `false`")
-        );
-        assert!(
-            report
-                .to_markdown()
-                .contains("does not match the shared-core expectation `Left monitor`")
-        );
+        assert!(report
+            .to_markdown()
+            .contains("Selected monitor matches shared-core placement rule: `false`"));
+        assert!(report
+            .to_markdown()
+            .contains("does not match the shared-core expectation `Left monitor`"));
     }
 
     #[test]
@@ -1187,13 +1254,19 @@ mod tests {
             "Emit structured runtime diagnostics for host gating, hover resolution, placement, and edit lifecycle"
         ));
         assert!(markdown.contains(
-            "Reference feature `Open preview after a 1-second hover debounce`: automated lanes `shared-core`; status `covered`"
+            "Real-host evidence requirements referenced by the macOS feature list: `frontmost-file-manager-detection, exact-hovered-markdown-resolution, monitor-selection-and-coordinate-translation`."
         ));
         assert!(markdown.contains(
-            "Reference feature `Preserve the macOS Markdown rendering surface, layout, and compact chrome copy`: automated lanes `shared-render`; status `covered`"
+            "Reference feature `Open preview after a 1-second hover debounce`: automated lanes `shared-core`; automated status `covered`; real-host evidence `not required beyond automated parity coverage`"
         ));
         assert!(markdown.contains(
-            "Reference feature `Resolve the actual hovered Markdown item instead of a nearby or first-visible candidate`: automated lanes `windows-adapter`; status `covered`"
+            "Reference feature `Preserve the macOS Markdown rendering surface, layout, and compact chrome copy`: automated lanes `shared-render`; automated status `covered`; real-host evidence `not required beyond automated parity coverage`"
+        ));
+        assert!(markdown.contains(
+            "Reference feature `Resolve the actual hovered Markdown item instead of a nearby or first-visible candidate`: automated lanes `windows-adapter`; automated status `covered`; real-host evidence `exact-hovered-markdown-resolution (pass)`"
+        ));
+        assert!(markdown.contains(
+            "Reference feature `Preserve the macOS four-tier width model of 560 / 960 / 1440 / 1920`: automated lanes `shared-core`; automated status `covered`; real-host evidence `monitor-selection-and-coordinate-translation (pass)`"
         ));
         assert!(markdown.contains("Accepted Markdown path: `"));
         assert!(markdown.contains("Selection mode: `containing visible frame`"));
@@ -1206,12 +1279,10 @@ mod tests {
     fn report_keeps_frontmost_surface_kind_human_readable() {
         let report = parity_compliant_report(ValidationCaptureProvenance::RealHostSession);
 
-        assert!(
-            report.sections[0]
-                .details
-                .iter()
-                .any(|detail| detail == "Observed surface kind: `explorer-list-view`")
-        );
+        assert!(report.sections[0]
+            .details
+            .iter()
+            .any(|detail| detail == "Observed surface kind: `explorer-list-view`"));
         assert_ne!(FrontSurfaceKind::ExplorerListView, FrontSurfaceKind::Other);
     }
 
@@ -1230,11 +1301,12 @@ mod tests {
             .contains(
                 &"Record validation evidence for frontmost Explorer detection on a real Windows 11 machine"
             ));
-        assert!(
-            report
-                .to_markdown()
-                .contains("- Layer 6 closure readiness: `not-ready-to-close`")
-        );
+        assert!(report
+            .to_markdown()
+            .contains("- Layer 6 closure readiness: `not-ready-to-close`"));
+        assert!(report.to_markdown().contains(
+            "Reference feature `Preserve the macOS four-tier width model of 560 / 960 / 1440 / 1920`: automated lanes `shared-core`; automated status `covered`; real-host evidence `monitor-selection-and-coordinate-translation (not-captured)`"
+        ));
         assert!(report.to_markdown().contains(
             "Capture provenance `validation-fixture` does not satisfy the blueprint requirement for evidence gathered on a real Windows 11 machine with Explorer frontmost, so this section remains `not-captured` even if the probe data looks parity-compliant."
         ));
@@ -1268,11 +1340,9 @@ mod tests {
             .contains(
                 &"Record Windows-specific validation evidence proving one-to-one parity with macOS for each feature above"
             ));
-        assert!(
-            report
-                .to_markdown()
-                .contains("- Layer 6 closure readiness: `not-ready-to-close`")
-        );
+        assert!(report
+            .to_markdown()
+            .contains("- Layer 6 closure readiness: `not-ready-to-close`"));
         assert!(report.to_markdown().contains(
             "Automated coverage matches the macOS reference list, but the parity-evidence checklist item stays blocked until these real-machine sections pass: Frontmost Explorer Detection (fail); Exact Hovered-Item Resolution (not-captured)."
         ));

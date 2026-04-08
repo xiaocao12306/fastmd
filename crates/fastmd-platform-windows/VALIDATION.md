@@ -39,7 +39,7 @@ This validation file is crate-local evidence only. It does not claim full Window
 - the generated validation report now rejects real-host captures that do not actually identify `Windows 11 + Explorer` as the target environment, so Layer 6 evidence cannot be closed from the wrong host surface by mistake
 - the generated multi-monitor evidence section now verifies that every captured monitor frame is structurally usable and that the selected monitor matches the same containing-visible-frame / nearest-visible-frame selection rule the shared core uses for placement
 - the generated validation report now emits explicit Layer 6 closure readiness plus ready/blocked checklist summaries, and it keeps the remaining parity-evidence checklist item blocked until the live frontmost, hover, and coordinate sections all pass
-- the generated validation report now lists the automated proof lane for every macOS reference feature so reviewers can see whether the parity claim is coming from shared core, shared render, or the Windows adapter instead of inferring that ownership by hand
+- the generated validation report now lists both the automated proof lane and any remaining live-host evidence dependency for every macOS reference feature, so reviewers can see whether a parity claim comes from shared core/shared render/the Windows adapter or is still blocked on frontmost, hovered-item, or monitor captures
 - a Windows-only `windows_validation_report` example now probes the live Explorer surface, current pointer target, and translated monitor layout, then prints a report that maps directly onto the remaining real-machine Layer 6 evidence items
 - unit tests added for hover API-stack metadata, probe-output parsing, exact-vs-fallback evidence classification, adapter wiring, relative-path rejection, and stable-surface classification behavior
 - unit tests added for coordinate API-stack metadata, Windows-to-shared desktop-space translation, containing-monitor selection, and nearest-work-area fallback
@@ -78,3 +78,6 @@ Run the evidence capture on an actual Windows 11 machine with Explorer frontmost
 - `rustup run stable-aarch64-apple-darwin rustfmt crates/fastmd-platform-windows/src/evidence.rs`: passed
 - `rustup run stable-aarch64-apple-darwin cargo metadata --format-version 1 --no-deps`: passed
 - `rustup run stable-aarch64-apple-darwin cargo test -p fastmd-platform-windows --lib`: blocked before crate tests ran because the local Rosetta linker environment aborted inside `cc` with `Attachment of code signature supplement failed: 1` while compiling dependency build scripts
+- `rustup run stable-aarch64-apple-darwin cargo test -p fastmd-contracts --lib preview_feature_real_host_evidence_requirements_stay_explicit`: passed
+- `rustup run stable-aarch64-apple-darwin cargo test -p fastmd-platform-windows --lib markdown_report_includes_real_machine_capture_command_outputs_and_feature_labels`: passed
+- `rustup run stable-aarch64-apple-darwin cargo test -p fastmd-platform-windows --lib parity_checklist_item_stays_blocked_until_real_machine_sections_pass`: passed

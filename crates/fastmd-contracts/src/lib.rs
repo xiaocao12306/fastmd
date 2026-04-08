@@ -875,6 +875,36 @@ impl MacOsPreviewFeature {
             }
         }
     }
+
+    pub fn real_host_evidence_requirements(self) -> &'static [RealHostEvidenceRequirement] {
+        match self {
+            Self::FrontmostFileManagerGating => {
+                &FRONTMOST_FILE_MANAGER_REAL_HOST_EVIDENCE_REQUIREMENTS
+            }
+            Self::ExactHoveredMarkdownResolution | Self::AcceptedLocalMarkdownFilesOnly => {
+                &EXACT_HOVERED_MARKDOWN_REAL_HOST_EVIDENCE_REQUIREMENTS
+            }
+            Self::MonitorSelectionAndCoordinateTranslation
+            | Self::WidthTierModel
+            | Self::PreviewPlacementRepositionBeforeShrink => {
+                &MONITOR_SELECTION_REAL_HOST_EVIDENCE_REQUIREMENTS
+            }
+            Self::HoverOpensAfterOneSecond
+            | Self::DifferentDocumentReplacesCurrentPreview
+            | Self::StationaryHoveredItemDoesNotReopen
+            | Self::SameDocumentPointerMotionKeepsPreview
+            | Self::CompactHintChipChrome
+            | Self::HotInteractionSurface
+            | Self::BackgroundToggleTab
+            | Self::ScrollWheelAndTouchpad
+            | Self::PagingKeysAndStickyMotion
+            | Self::InlineBlockEditEntryAndSourceMapping
+            | Self::EditSaveCancelAndLock
+            | Self::ClosePolicyOutsideClickAppSwitchEscape
+            | Self::MarkdownRenderingSurface
+            | Self::RuntimeDiagnosticsCoverage => &NO_REAL_HOST_EVIDENCE_REQUIREMENTS,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -894,6 +924,34 @@ impl PreviewFeatureCoverageLane {
         }
     }
 }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum RealHostEvidenceRequirement {
+    FrontmostFileManagerDetection,
+    ExactHoveredMarkdownResolution,
+    MonitorSelectionAndCoordinateTranslation,
+}
+
+impl RealHostEvidenceRequirement {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::FrontmostFileManagerDetection => "frontmost-file-manager-detection",
+            Self::ExactHoveredMarkdownResolution => "exact-hovered-markdown-resolution",
+            Self::MonitorSelectionAndCoordinateTranslation => {
+                "monitor-selection-and-coordinate-translation"
+            }
+        }
+    }
+}
+
+const FRONTMOST_FILE_MANAGER_REAL_HOST_EVIDENCE_REQUIREMENTS: [RealHostEvidenceRequirement; 1] =
+    [RealHostEvidenceRequirement::FrontmostFileManagerDetection];
+const EXACT_HOVERED_MARKDOWN_REAL_HOST_EVIDENCE_REQUIREMENTS: [RealHostEvidenceRequirement; 1] =
+    [RealHostEvidenceRequirement::ExactHoveredMarkdownResolution];
+const MONITOR_SELECTION_REAL_HOST_EVIDENCE_REQUIREMENTS: [RealHostEvidenceRequirement; 1] =
+    [RealHostEvidenceRequirement::MonitorSelectionAndCoordinateTranslation];
+const NO_REAL_HOST_EVIDENCE_REQUIREMENTS: [RealHostEvidenceRequirement; 0] = [];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct PreviewFeatureCoverageRecord {
@@ -989,6 +1047,17 @@ pub fn preview_feature_coverage_lanes(
     }
 
     lanes.into_iter().collect()
+}
+
+pub fn preview_feature_real_host_evidence_requirements(
+    features: &[MacOsPreviewFeature],
+) -> Vec<RealHostEvidenceRequirement> {
+    let mut requirements = BTreeSet::new();
+    for feature in features {
+        requirements.extend(feature.real_host_evidence_requirements().iter().copied());
+    }
+
+    requirements.into_iter().collect()
 }
 
 pub fn preview_feature_coverage_record_gaps_against_reference(
@@ -2353,6 +2422,40 @@ mod tests {
         assert_eq!(
             PreviewFeatureCoverageLane::SharedRender.label(),
             "shared-render"
+        );
+    }
+
+    #[test]
+    fn preview_feature_real_host_evidence_requirements_stay_explicit() {
+        assert_eq!(
+            MacOsPreviewFeature::FrontmostFileManagerGating.real_host_evidence_requirements(),
+            &[RealHostEvidenceRequirement::FrontmostFileManagerDetection]
+        );
+        assert_eq!(
+            MacOsPreviewFeature::ExactHoveredMarkdownResolution.real_host_evidence_requirements(),
+            &[RealHostEvidenceRequirement::ExactHoveredMarkdownResolution]
+        );
+        assert_eq!(
+            MacOsPreviewFeature::WidthTierModel.real_host_evidence_requirements(),
+            &[RealHostEvidenceRequirement::MonitorSelectionAndCoordinateTranslation]
+        );
+        assert!(MacOsPreviewFeature::MarkdownRenderingSurface
+            .real_host_evidence_requirements()
+            .is_empty());
+        assert_eq!(
+            preview_feature_real_host_evidence_requirements(&[
+                MacOsPreviewFeature::ExactHoveredMarkdownResolution,
+                MacOsPreviewFeature::AcceptedLocalMarkdownFilesOnly,
+                MacOsPreviewFeature::WidthTierModel,
+            ]),
+            vec![
+                RealHostEvidenceRequirement::ExactHoveredMarkdownResolution,
+                RealHostEvidenceRequirement::MonitorSelectionAndCoordinateTranslation,
+            ]
+        );
+        assert_eq!(
+            RealHostEvidenceRequirement::FrontmostFileManagerDetection.label(),
+            "frontmost-file-manager-detection"
         );
     }
 
