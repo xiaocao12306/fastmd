@@ -93,7 +93,7 @@ final class FinderSelectionResolver {
 
     private var generationCounter: UInt64 = 0
     private var finderPid: pid_t = 0
-    private var spaceTriggerEnabled: Bool = true
+    private var spaceTriggerEnabled: Bool = PreferencesStore.spaceTriggerEnabled
     private var pendingRefreshWorkItem: DispatchWorkItem?
     private let refreshDebounce: TimeInterval = 0.05
 

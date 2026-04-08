@@ -45,6 +45,9 @@ final class FinderHoverCoordinator {
         NSWorkspace.shared.notificationCenter.removeObserver(self)
     }
 
+    var isHoverTriggerEnabled: Bool { PreferencesStore.hoverTriggerEnabled }
+    var isSpaceTriggerEnabled: Bool { PreferencesStore.spaceTriggerEnabled }
+
     func start() {
         guard !isRunning else { return }
         let trusted = AccessibilityPermissionManager.ensureTrusted(prompt: true)
@@ -54,10 +57,11 @@ final class FinderHoverCoordinator {
             return
         }
         isRunning = true
-        hoverMonitor.start()
-        spaceKeyMonitor.start()
+        applyTriggerPreferences()
         selectionResolver.refreshNow(reason: "coordinator start")
-        RuntimeLogger.log("Coordinator started.")
+        RuntimeLogger.log(
+            "Coordinator started. hover=\(PreferencesStore.hoverTriggerEnabled) space=\(PreferencesStore.spaceTriggerEnabled)"
+        )
     }
 
     func stop() {
@@ -68,6 +72,40 @@ final class FinderHoverCoordinator {
         spaceKeyMonitor.stop()
         hideCurrentPreview(reason: "Coordinator stopped.", force: true)
         RuntimeLogger.log("Coordinator stopped.")
+    }
+
+    func setHoverTriggerEnabled(_ enabled: Bool) {
+        PreferencesStore.hoverTriggerEnabled = enabled
+        RuntimeLogger.log("Preference hoverTriggerEnabled -> \(enabled)")
+        if isRunning {
+            applyTriggerPreferences()
+        }
+    }
+
+    func setSpaceTriggerEnabled(_ enabled: Bool) {
+        PreferencesStore.spaceTriggerEnabled = enabled
+        RuntimeLogger.log("Preference spaceTriggerEnabled -> \(enabled)")
+        selectionResolver.setSpaceTriggerEnabled(enabled)
+        if isRunning {
+            applyTriggerPreferences()
+        }
+    }
+
+    /// Start or stop the hover and space subsystems to match the current
+    /// preference flags. Runs any time preferences change (including at
+    /// initial start) so the two monitors stay in sync with the user's
+    /// intent without leaking resources when either is turned off.
+    private func applyTriggerPreferences() {
+        if PreferencesStore.hoverTriggerEnabled {
+            hoverMonitor.start()
+        } else {
+            hoverMonitor.stop()
+        }
+        if PreferencesStore.spaceTriggerEnabled {
+            spaceKeyMonitor.start()
+        } else {
+            spaceKeyMonitor.stop()
+        }
     }
 
     @objc
