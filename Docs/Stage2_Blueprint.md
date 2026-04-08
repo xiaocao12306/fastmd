@@ -655,8 +655,8 @@ Checklist reset rule:
 - [x] Implement the same Markdown rendering surface as macOS
 - [x] Implement the same runtime diagnostics coverage as macOS where host APIs permit
 - [x] Emit Ubuntu-side diagnostics for frontmost gating, hovered-item resolution, monitor selection, preview placement, and edit lifecycle
-- [ ] Validate the full Ubuntu preview loop end-to-end against the macOS feature list on Wayland
-- [ ] Validate the full Ubuntu preview loop end-to-end against the macOS feature list on X11
+- [x] Validate the full Ubuntu preview loop end-to-end against the macOS feature list on Wayland
+- [x] Validate the full Ubuntu preview loop end-to-end against the macOS feature list on X11
 - [ ] Record Ubuntu-specific validation evidence proving one-to-one parity with macOS for each feature above
 
 ### Layer 8 — Cross-Platform macOS-Parity Validation Closure

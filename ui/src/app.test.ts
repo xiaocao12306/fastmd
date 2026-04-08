@@ -373,6 +373,109 @@ describe("FastMD shared preview shell", () => {
     expect(document.body.textContent).not.toContain("apps/macos");
   });
 
+  it("stores Ubuntu Wayland and X11 preview-loop validation as hidden shell metadata", async () => {
+    createApp({
+      ...demoBootstrapPayload,
+      hostCapabilities: {
+        ...demoBootstrapPayload.hostCapabilities,
+        platformId: "ubuntu",
+        runtimeMode: "desktop",
+        linuxPreviewLoopValidation: {
+          wayland: {
+            target: "Ubuntu 24.04 + GNOME Files / Nautilus",
+            referenceSurface: "apps/macos",
+            displayServer: "wayland",
+            validationMode: "automated-shared-preview-loop",
+            matchesReference: true,
+            coveredFeatureCount: 20,
+            referenceFeatureCount: 20,
+            missingFeatures: [],
+            featureLanes: [
+              {
+                feature:
+                  "Resolve the actual hovered Markdown item instead of a nearby or first-visible candidate",
+                lanes: ["shared-core", "ubuntu-adapter"],
+              },
+            ],
+            note:
+              "Automated Wayland preview-loop validation now proves that the shared core, shared render, and Ubuntu Nautilus adapter cover the full macOS reference feature list without claiming the still-open real Ubuntu 24.04 Wayland host-evidence items.",
+          },
+          x11: {
+            target: "Ubuntu 24.04 + GNOME Files / Nautilus",
+            referenceSurface: "apps/macos",
+            displayServer: "x11",
+            validationMode: "automated-shared-preview-loop",
+            matchesReference: true,
+            coveredFeatureCount: 20,
+            referenceFeatureCount: 20,
+            missingFeatures: [],
+            featureLanes: [
+              {
+                feature:
+                  "Preserve the macOS Markdown rendering surface, layout, and compact chrome copy",
+                lanes: ["shared-render"],
+              },
+            ],
+            note:
+              "Automated X11 preview-loop validation now proves that the shared core, shared render, and Ubuntu Nautilus adapter cover the full macOS reference feature list without claiming the still-open real Ubuntu 24.04 X11 host-evidence items.",
+          },
+        },
+      },
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const shell = document.querySelector(".shell") as HTMLElement | null;
+    const waylandFeatureLanes = JSON.parse(
+      shell?.dataset.linuxWaylandPreviewLoopFeatureLanes ?? "[]",
+    ) as Array<{ feature: string; lanes: string[] }>;
+    const x11FeatureLanes = JSON.parse(
+      shell?.dataset.linuxX11PreviewLoopFeatureLanes ?? "[]",
+    ) as Array<{ feature: string; lanes: string[] }>;
+
+    expect(shell?.dataset.linuxWaylandPreviewLoopTarget).toBe(
+      "Ubuntu 24.04 + GNOME Files / Nautilus",
+    );
+    expect(shell?.dataset.linuxWaylandPreviewLoopReferenceSurface).toBe("apps/macos");
+    expect(shell?.dataset.linuxWaylandPreviewLoopValidationMode).toBe(
+      "automated-shared-preview-loop",
+    );
+    expect(shell?.dataset.linuxWaylandPreviewLoopMatchesReference).toBe("true");
+    expect(shell?.dataset.linuxWaylandPreviewLoopCoveredFeatureCount).toBe("20");
+    expect(shell?.dataset.linuxWaylandPreviewLoopReferenceFeatureCount).toBe("20");
+    expect(shell?.dataset.linuxWaylandPreviewLoopMissingFeatures).toBe("[]");
+    expect(waylandFeatureLanes).toEqual([
+      {
+        feature:
+          "Resolve the actual hovered Markdown item instead of a nearby or first-visible candidate",
+        lanes: ["shared-core", "ubuntu-adapter"],
+      },
+    ]);
+    expect(shell?.dataset.linuxWaylandPreviewLoopNote).toContain("Wayland");
+
+    expect(shell?.dataset.linuxX11PreviewLoopTarget).toBe(
+      "Ubuntu 24.04 + GNOME Files / Nautilus",
+    );
+    expect(shell?.dataset.linuxX11PreviewLoopReferenceSurface).toBe("apps/macos");
+    expect(shell?.dataset.linuxX11PreviewLoopValidationMode).toBe(
+      "automated-shared-preview-loop",
+    );
+    expect(shell?.dataset.linuxX11PreviewLoopMatchesReference).toBe("true");
+    expect(shell?.dataset.linuxX11PreviewLoopCoveredFeatureCount).toBe("20");
+    expect(shell?.dataset.linuxX11PreviewLoopReferenceFeatureCount).toBe("20");
+    expect(shell?.dataset.linuxX11PreviewLoopMissingFeatures).toBe("[]");
+    expect(x11FeatureLanes).toEqual([
+      {
+        feature:
+          "Preserve the macOS Markdown rendering surface, layout, and compact chrome copy",
+        lanes: ["shared-render"],
+      },
+    ]);
+    expect(shell?.dataset.linuxX11PreviewLoopNote).toContain("X11");
+    expect(document.body.textContent).not.toContain("automated-shared-preview-loop");
+    expect(document.body.textContent).not.toContain("still-open real Ubuntu 24.04 Wayland");
+    expect(document.body.textContent).not.toContain("still-open real Ubuntu 24.04 X11");
+  });
+
   it("stores live Ubuntu frontmost-gate diagnostics as hidden shell metadata", async () => {
     createApp({
       ...demoBootstrapPayload,

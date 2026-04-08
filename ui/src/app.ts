@@ -7,6 +7,7 @@ import {
   readLinuxHoverLifecycleDiagnostic,
   readLinuxHoveredItemDiagnostic,
   readLinuxParityCoverage,
+  readLinuxPreviewLoopValidation,
   readLinuxProbePlanSemanticGuardrail,
   readLinuxProbePlans,
   readLinuxRuntimeDiagnostics,
@@ -228,6 +229,7 @@ export class PreviewShellApp {
         this.syncLinuxProbePlanAttributes();
         this.syncLinuxPreviewPlacementAttributes();
         this.syncLinuxParityCoverageAttributes();
+        this.syncLinuxPreviewLoopValidationAttributes();
         this.syncLinuxRuntimeDiagnosticAttributes();
         this.syncStatus();
       }),
@@ -331,6 +333,7 @@ export class PreviewShellApp {
     this.syncLinuxProbePlanAttributes();
     this.syncLinuxPreviewPlacementAttributes();
     this.syncLinuxParityCoverageAttributes();
+    this.syncLinuxPreviewLoopValidationAttributes();
     this.syncLinuxRuntimeDiagnosticAttributes();
     this.syncWidthChrome();
     this.applyBackgroundMode();
@@ -477,6 +480,53 @@ export class PreviewShellApp {
       "linuxParityCoverageFeatureLanes",
       JSON.stringify(parityCoverage.featureLanes),
     );
+  }
+
+  private syncLinuxPreviewLoopValidationAttributes(): void {
+    const previewLoopValidation = readLinuxPreviewLoopValidation(this.hostCapabilities);
+
+    if (!previewLoopValidation) {
+      for (const key of [
+        "linuxWaylandPreviewLoopTarget",
+        "linuxWaylandPreviewLoopReferenceSurface",
+        "linuxWaylandPreviewLoopValidationMode",
+        "linuxWaylandPreviewLoopMatchesReference",
+        "linuxWaylandPreviewLoopCoveredFeatureCount",
+        "linuxWaylandPreviewLoopReferenceFeatureCount",
+        "linuxWaylandPreviewLoopMissingFeatures",
+        "linuxWaylandPreviewLoopFeatureLanes",
+        "linuxWaylandPreviewLoopNote",
+        "linuxX11PreviewLoopTarget",
+        "linuxX11PreviewLoopReferenceSurface",
+        "linuxX11PreviewLoopValidationMode",
+        "linuxX11PreviewLoopMatchesReference",
+        "linuxX11PreviewLoopCoveredFeatureCount",
+        "linuxX11PreviewLoopReferenceFeatureCount",
+        "linuxX11PreviewLoopMissingFeatures",
+        "linuxX11PreviewLoopFeatureLanes",
+        "linuxX11PreviewLoopNote",
+      ]) {
+        delete this.shellNode.dataset[key];
+      }
+      return;
+    }
+
+    const summaries = [
+      { prefix: "linuxWaylandPreviewLoop", summary: previewLoopValidation.wayland },
+      { prefix: "linuxX11PreviewLoop", summary: previewLoopValidation.x11 },
+    ] as const;
+
+    for (const { prefix, summary } of summaries) {
+      this.setShellData(`${prefix}Target`, summary.target);
+      this.setShellData(`${prefix}ReferenceSurface`, summary.referenceSurface);
+      this.setShellData(`${prefix}ValidationMode`, summary.validationMode);
+      this.setShellData(`${prefix}MatchesReference`, summary.matchesReference);
+      this.setShellData(`${prefix}CoveredFeatureCount`, summary.coveredFeatureCount);
+      this.setShellData(`${prefix}ReferenceFeatureCount`, summary.referenceFeatureCount);
+      this.setShellData(`${prefix}MissingFeatures`, JSON.stringify(summary.missingFeatures));
+      this.setShellData(`${prefix}FeatureLanes`, JSON.stringify(summary.featureLanes));
+      this.setShellData(`${prefix}Note`, summary.note);
+    }
   }
 
   private setShellData(

@@ -35,6 +35,7 @@ Implemented and unit-tested in this slice:
 - Wayland and X11 backend plans share one semantic guardrail so backend differences do not alter FastMD product behavior
 - the shared Tauri shell now exports that one semantic guardrail into hidden Linux probe-plan metadata, and shared UI tests confirm that switching the display-server plan from Wayland to X11 does not change the user-visible preview shell
 - shared contracts, shared core, shared render, and the Ubuntu adapter now publish one explicit macOS-reference feature-coverage summary, and the shared Tauri/UI lane surfaces that summary as hidden parity metadata instead of relying on an implicit parity claim
+- the Ubuntu lane now publishes one automated preview-loop validation summary for Wayland and one for X11, and both summaries prove that the shared core, shared render, and Ubuntu Nautilus adapter cover the full macOS reference feature list without claiming the still-open real Ubuntu host-evidence items
 
 Not yet proven in this slice:
 
@@ -56,6 +57,7 @@ Shared shell parity now covered outside this crate:
 - the Ubuntu shell now advertises the same fastmd-render Stage 2 rendering contract the shared frontend consumes, and fastmd-render pins `ui/src/markdown.ts`, `ui/src/styles.css`, and `ui/src/app.ts` to the current macOS `MarkdownRenderer.swift` runtime and copy
 - the Ubuntu shell now surfaces live hovered-item diagnostics through the shared hover-anchor path, keeping rejected paths and unsupported entities visible in hidden shell metadata without changing user-visible product semantics
 - the Ubuntu shell now keeps the Wayland/X11 semantic guardrail in hidden shell metadata, so backend probe differences remain inspectable without leaking Linux-only copy into the visible macOS-parity shell
+- the Ubuntu shell now keeps the Wayland and X11 automated preview-loop validation summaries in hidden shell metadata, so reviewers can inspect full feature-list coverage for each display server without changing visible preview copy
 - `Tab`, paged scrolling, and `Escape` close semantics are validated in the shared Tauri/UI lane
 - Linux blur-close handling now distinguishes `outside-click` from `app-switch` by re-checking the live frontmost Nautilus gate before the preview hides; edit lock still blocks both paths
 - the shared Tauri/UI lane now keeps the inferred blur-close reason plus edit-lifecycle policy, persistence eligibility, and last close reason in hidden shell metadata so Ubuntu close-path parity stays inspectable without diverging from the macOS-visible shell

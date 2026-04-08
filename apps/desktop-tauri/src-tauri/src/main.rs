@@ -14,9 +14,10 @@ use fastmd_platform_linux_nautilus::{
     HoveredEntityKind, HoveredItemSnapshot, Monitor as PlatformMonitor,
     MonitorLayout as PlatformMonitorLayout, ScreenPoint as PlatformScreenPoint,
     ScreenRect as PlatformScreenRect, UbuntuPreviewFeatureCoverageSummary,
-    DIAGNOSTIC_STATUS_EMITTED, DIAGNOSTIC_STATUS_PENDING_LIVE_PROBE, EDIT_LIFECYCLE_POLICY,
-    EDIT_LIFECYCLE_RUNTIME_NOTE, MONITOR_SELECTION_POLICY, MONITOR_SELECTION_RUNTIME_NOTE,
-    PREVIEW_PLACEMENT_POLICY, PREVIEW_PLACEMENT_RUNTIME_NOTE,
+    UbuntuPreviewLoopValidationBundle, DIAGNOSTIC_STATUS_EMITTED,
+    DIAGNOSTIC_STATUS_PENDING_LIVE_PROBE, EDIT_LIFECYCLE_POLICY, EDIT_LIFECYCLE_RUNTIME_NOTE,
+    MONITOR_SELECTION_POLICY, MONITOR_SELECTION_RUNTIME_NOTE, PREVIEW_PLACEMENT_POLICY,
+    PREVIEW_PLACEMENT_RUNTIME_NOTE,
 };
 use fastmd_render::{stage2_rendering_contract, MarkdownFeature};
 use serde::{Deserialize, Serialize};
@@ -91,6 +92,7 @@ struct HostCapabilitiesPayload {
     linux_probe_plans: Option<LinuxProbePlansPayload>,
     linux_preview_placement: Option<LinuxPreviewPlacementPayload>,
     linux_parity_coverage: Option<UbuntuPreviewFeatureCoverageSummary>,
+    linux_preview_loop_validation: Option<UbuntuPreviewLoopValidationBundle>,
     linux_runtime_diagnostics: Option<LinuxRuntimeDiagnosticsPayload>,
 }
 
@@ -399,6 +401,7 @@ fn initial_host_capabilities(shell_state: &ShellStatePayload) -> HostCapabilitie
         linux_probe_plans: linux_probe_plans_payload(),
         linux_preview_placement: linux_preview_placement_payload(),
         linux_parity_coverage: linux_parity_coverage_payload(),
+        linux_preview_loop_validation: linux_preview_loop_validation_payload(),
         linux_runtime_diagnostics: linux_runtime_diagnostics_payload(),
     };
     refresh_edit_persistence_capability(&mut host_capabilities, shell_state);
@@ -524,6 +527,14 @@ fn linux_parity_coverage_payload() -> Option<UbuntuPreviewFeatureCoverageSummary
     }
 
     Some(ubuntu_preview_feature_coverage_summary())
+}
+
+fn linux_preview_loop_validation_payload() -> Option<UbuntuPreviewLoopValidationBundle> {
+    if !cfg!(target_os = "linux") {
+        return None;
+    }
+
+    Some(fastmd_platform_linux_nautilus::ubuntu_preview_loop_validation_bundle())
 }
 
 fn detected_linux_display_server() -> Option<DisplayServerKind> {
@@ -2140,6 +2151,19 @@ mod tests {
     }
 
     #[test]
+    fn linux_preview_loop_validation_is_only_advertised_on_linux_targets() {
+        let shell_state = ShellBridgeState::new();
+
+        assert_eq!(
+            shell_state
+                .snapshot_host_capabilities()
+                .linux_preview_loop_validation
+                .is_some(),
+            cfg!(target_os = "linux")
+        );
+    }
+
+    #[test]
     fn linux_parity_coverage_payload_tracks_the_macos_reference_feature_list() {
         let payload = linux_parity_coverage_payload();
 
@@ -2163,6 +2187,37 @@ mod tests {
                     == "Preserve the macOS Markdown rendering surface, layout, and compact chrome copy"
                     && entry.lanes.iter().any(|lane| lane == "shared-render")
             }));
+        } else {
+            assert!(payload.is_none());
+        }
+    }
+
+    #[test]
+    fn linux_preview_loop_validation_payload_tracks_wayland_and_x11_reference_coverage() {
+        let payload = linux_preview_loop_validation_payload();
+
+        if cfg!(target_os = "linux") {
+            let payload =
+                payload.expect("linux preview-loop validation should exist on Linux targets");
+            assert_eq!(payload.wayland.display_server, "wayland");
+            assert_eq!(payload.x11.display_server, "x11");
+            assert_eq!(
+                payload.wayland.validation_mode,
+                "automated-shared-preview-loop"
+            );
+            assert_eq!(payload.x11.validation_mode, "automated-shared-preview-loop");
+            assert!(payload.wayland.matches_reference);
+            assert!(payload.x11.matches_reference);
+            assert!(payload.wayland.missing_features.is_empty());
+            assert!(payload.x11.missing_features.is_empty());
+            assert_eq!(
+                payload.wayland.covered_feature_count,
+                payload.wayland.reference_feature_count
+            );
+            assert_eq!(
+                payload.x11.covered_feature_count,
+                payload.x11.reference_feature_count
+            );
         } else {
             assert!(payload.is_none());
         }

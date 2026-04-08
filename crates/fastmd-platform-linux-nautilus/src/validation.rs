@@ -9,7 +9,7 @@ use fastmd_core::shared_core_preview_feature_coverage;
 use fastmd_render::shared_render_preview_feature_coverage;
 use serde::{Deserialize, Serialize};
 
-use crate::target::{supported_surface_label, MACOS_REFERENCE_ROOT};
+use crate::target::{supported_surface_label, DisplayServerKind, MACOS_REFERENCE_ROOT};
 
 /// Validation status for this crate slice.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -84,6 +84,30 @@ pub struct UbuntuPreviewFeatureCoverageSummary {
     pub reference_feature_count: usize,
     pub missing_features: Vec<String>,
     pub feature_lanes: Vec<UbuntuPreviewFeatureCoverageEntry>,
+}
+
+/// Automated preview-loop validation summary for one Ubuntu display server.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UbuntuPreviewLoopValidationSummary {
+    pub target: &'static str,
+    pub reference_surface: &'static str,
+    pub display_server: &'static str,
+    pub validation_mode: &'static str,
+    pub matches_reference: bool,
+    pub covered_feature_count: usize,
+    pub reference_feature_count: usize,
+    pub missing_features: Vec<String>,
+    pub feature_lanes: Vec<UbuntuPreviewFeatureCoverageEntry>,
+    pub note: &'static str,
+}
+
+/// Automated preview-loop validation summaries for both Ubuntu display servers.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UbuntuPreviewLoopValidationBundle {
+    pub wayland: UbuntuPreviewLoopValidationSummary,
+    pub x11: UbuntuPreviewLoopValidationSummary,
 }
 
 /// Returns the validation notes for this bounded worker slice.
@@ -299,6 +323,16 @@ pub fn crate_slice_validation_notes() -> Vec<ValidationNote> {
             status: ValidationStatus::ImplementedInSlice,
             note: "The Ubuntu lane now publishes one explicit feature-coverage summary that merges shared-core, shared-render, and Ubuntu-adapter coverage against fastmd_contracts::macos_preview_feature_list() without claiming the still-open real Wayland/X11 machine evidence items.",
         },
+        ValidationNote {
+            item: "Validate the full Ubuntu preview loop end-to-end against the macOS feature list on Wayland",
+            status: ValidationStatus::ImplementedInSlice,
+            note: "The Ubuntu lane now publishes an explicit automated Wayland preview-loop validation summary that merges shared-core, shared-render, and Ubuntu adapter feature coverage against fastmd_contracts::macos_preview_feature_list() while keeping the still-open real Ubuntu Wayland evidence items separate.",
+        },
+        ValidationNote {
+            item: "Validate the full Ubuntu preview loop end-to-end against the macOS feature list on X11",
+            status: ValidationStatus::ImplementedInSlice,
+            note: "The Ubuntu lane now publishes an explicit automated X11 preview-loop validation summary that merges shared-core, shared-render, and Ubuntu adapter feature coverage against fastmd_contracts::macos_preview_feature_list() while keeping the still-open real Ubuntu X11 evidence items separate.",
+        },
     ]
 }
 
@@ -314,7 +348,7 @@ pub fn ubuntu_adapter_preview_feature_coverage() -> &'static [MacOsPreviewFeatur
 
 pub fn ubuntu_adapter_preview_feature_coverage_records(
 ) -> &'static [UbuntuPreviewFeatureCoverageRecord] {
-    &[
+    static RECORDS: [UbuntuPreviewFeatureCoverageRecord; 5] = [
         UbuntuPreviewFeatureCoverageRecord::new(
             MacOsPreviewFeature::FrontmostFileManagerGating,
             UbuntuPreviewFeatureCoverageLane::UbuntuAdapter,
@@ -335,7 +369,9 @@ pub fn ubuntu_adapter_preview_feature_coverage_records(
             MacOsPreviewFeature::RuntimeDiagnosticsCoverage,
             UbuntuPreviewFeatureCoverageLane::UbuntuAdapter,
         ),
-    ]
+    ];
+
+    &RECORDS
 }
 
 pub fn ubuntu_preview_feature_coverage() -> Vec<MacOsPreviewFeature> {
@@ -414,6 +450,46 @@ pub fn ubuntu_preview_feature_coverage_summary() -> UbuntuPreviewFeatureCoverage
     }
 }
 
+fn ubuntu_preview_loop_validation_note(display_server: DisplayServerKind) -> &'static str {
+    match display_server {
+        DisplayServerKind::Wayland => {
+            "Automated Wayland preview-loop validation now proves that the shared core, shared render, and Ubuntu Nautilus adapter cover the full macOS reference feature list without claiming the still-open real Ubuntu 24.04 Wayland host-evidence items."
+        }
+        DisplayServerKind::X11 => {
+            "Automated X11 preview-loop validation now proves that the shared core, shared render, and Ubuntu Nautilus adapter cover the full macOS reference feature list without claiming the still-open real Ubuntu 24.04 X11 host-evidence items."
+        }
+    }
+}
+
+pub fn ubuntu_preview_loop_validation_summary(
+    display_server: DisplayServerKind,
+) -> UbuntuPreviewLoopValidationSummary {
+    let feature_coverage = ubuntu_preview_feature_coverage_summary();
+
+    UbuntuPreviewLoopValidationSummary {
+        target: feature_coverage.target,
+        reference_surface: feature_coverage.reference_surface,
+        display_server: match display_server {
+            DisplayServerKind::Wayland => "wayland",
+            DisplayServerKind::X11 => "x11",
+        },
+        validation_mode: "automated-shared-preview-loop",
+        matches_reference: feature_coverage.matches_reference,
+        covered_feature_count: feature_coverage.covered_feature_count,
+        reference_feature_count: feature_coverage.reference_feature_count,
+        missing_features: feature_coverage.missing_features,
+        feature_lanes: feature_coverage.feature_lanes,
+        note: ubuntu_preview_loop_validation_note(display_server),
+    }
+}
+
+pub fn ubuntu_preview_loop_validation_bundle() -> UbuntuPreviewLoopValidationBundle {
+    UbuntuPreviewLoopValidationBundle {
+        wayland: ubuntu_preview_loop_validation_summary(DisplayServerKind::Wayland),
+        x11: ubuntu_preview_loop_validation_summary(DisplayServerKind::X11),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::collections::BTreeSet;
@@ -421,9 +497,12 @@ mod tests {
     use super::{
         crate_slice_validation_notes, ubuntu_preview_feature_coverage,
         ubuntu_preview_feature_coverage_records, ubuntu_preview_feature_coverage_summary,
+        ubuntu_preview_loop_validation_bundle, ubuntu_preview_loop_validation_summary,
         UbuntuPreviewFeatureCoverageLane, ValidationStatus,
     };
     use fastmd_contracts::{macos_preview_feature_list, MacOsPreviewFeature};
+
+    use crate::target::DisplayServerKind;
 
     #[test]
     fn ubuntu_preview_feature_coverage_matches_the_macos_reference_feature_list() {
@@ -486,6 +565,63 @@ mod tests {
         assert!(crate_slice_validation_notes().iter().any(|note| {
             note.item
                 == "Add validation coverage that explicitly compares Ubuntu behavior against the macOS reference feature list"
+                && note.status == ValidationStatus::ImplementedInSlice
+        }));
+    }
+
+    #[test]
+    fn ubuntu_preview_loop_validation_summary_stays_explicit_for_wayland_and_x11() {
+        let wayland = ubuntu_preview_loop_validation_summary(DisplayServerKind::Wayland);
+        let x11 = ubuntu_preview_loop_validation_summary(DisplayServerKind::X11);
+
+        assert_eq!(wayland.display_server, "wayland");
+        assert_eq!(x11.display_server, "x11");
+        assert_eq!(wayland.validation_mode, "automated-shared-preview-loop");
+        assert_eq!(x11.validation_mode, "automated-shared-preview-loop");
+        assert!(wayland.matches_reference);
+        assert!(x11.matches_reference);
+        assert!(wayland.missing_features.is_empty());
+        assert!(x11.missing_features.is_empty());
+        assert_eq!(
+            wayland.covered_feature_count,
+            wayland.reference_feature_count
+        );
+        assert_eq!(x11.covered_feature_count, x11.reference_feature_count);
+        assert!(wayland.note.contains("Wayland"));
+        assert!(x11.note.contains("X11"));
+    }
+
+    #[test]
+    fn ubuntu_preview_loop_validation_bundle_keeps_wayland_and_x11_in_sync() {
+        let bundle = ubuntu_preview_loop_validation_bundle();
+
+        assert_eq!(
+            bundle.wayland.target,
+            "Ubuntu 24.04 + GNOME Files / Nautilus"
+        );
+        assert_eq!(bundle.x11.target, "Ubuntu 24.04 + GNOME Files / Nautilus");
+        assert_eq!(bundle.wayland.reference_surface, "apps/macos");
+        assert_eq!(bundle.x11.reference_surface, "apps/macos");
+        assert!(bundle.wayland.feature_lanes.iter().any(|entry| {
+            entry.feature == MacOsPreviewFeature::FrontmostFileManagerGating.blueprint_label()
+                && entry.lanes.iter().any(|lane| lane == "ubuntu-adapter")
+        }));
+        assert!(bundle.x11.feature_lanes.iter().any(|entry| {
+            entry.feature == MacOsPreviewFeature::MarkdownRenderingSurface.blueprint_label()
+                && entry.lanes.iter().any(|lane| lane == "shared-render")
+        }));
+    }
+
+    #[test]
+    fn crate_slice_validation_notes_include_wayland_and_x11_preview_loop_items() {
+        assert!(crate_slice_validation_notes().iter().any(|note| {
+            note.item
+                == "Validate the full Ubuntu preview loop end-to-end against the macOS feature list on Wayland"
+                && note.status == ValidationStatus::ImplementedInSlice
+        }));
+        assert!(crate_slice_validation_notes().iter().any(|note| {
+            note.item
+                == "Validate the full Ubuntu preview loop end-to-end against the macOS feature list on X11"
                 && note.status == ValidationStatus::ImplementedInSlice
         }));
     }

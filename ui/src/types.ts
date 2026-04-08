@@ -57,6 +57,7 @@ export interface HostCapabilities {
   linuxProbePlans?: LinuxProbePlans | null;
   linuxPreviewPlacement?: LinuxPreviewPlacement | null;
   linuxParityCoverage?: LinuxParityCoverage | null;
+  linuxPreviewLoopValidation?: LinuxPreviewLoopValidation | null;
   linuxRuntimeDiagnostics?: LinuxRuntimeDiagnostics | null;
 }
 
@@ -104,6 +105,24 @@ export interface LinuxParityCoverage {
   referenceFeatureCount: number;
   missingFeatures: string[];
   featureLanes: LinuxParityCoverageFeature[];
+}
+
+export interface LinuxPreviewLoopValidationSummary {
+  target: string;
+  referenceSurface: string;
+  displayServer: string;
+  validationMode: string;
+  matchesReference: boolean;
+  coveredFeatureCount: number;
+  referenceFeatureCount: number;
+  missingFeatures: string[];
+  featureLanes: LinuxParityCoverageFeature[];
+  note: string;
+}
+
+export interface LinuxPreviewLoopValidation {
+  wayland: LinuxPreviewLoopValidationSummary;
+  x11: LinuxPreviewLoopValidationSummary;
 }
 
 export interface PreviewGeometryRect {

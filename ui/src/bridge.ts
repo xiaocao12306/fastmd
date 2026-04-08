@@ -9,6 +9,7 @@ import type {
   HotInteractionSurface,
   LinuxEditLifecycleDiagnostic,
   LinuxParityCoverage,
+  LinuxPreviewLoopValidation,
   LinuxProbePlans,
   LinuxRuntimeDiagnostics,
   PreviewGeometry,
@@ -152,6 +153,12 @@ export function readLinuxParityCoverage(
   capabilities: HostCapabilities,
 ): LinuxParityCoverage | null {
   return capabilities.linuxParityCoverage ?? null;
+}
+
+export function readLinuxPreviewLoopValidation(
+  capabilities: HostCapabilities,
+): LinuxPreviewLoopValidation | null {
+  return capabilities.linuxPreviewLoopValidation ?? null;
 }
 
 export function readLinuxFrontmostGateDiagnostic(
