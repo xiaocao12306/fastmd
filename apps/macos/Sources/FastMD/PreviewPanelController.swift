@@ -17,6 +17,7 @@ final class PreviewPanelController: NSObject, WKNavigationDelegate {
     private var globalClickMonitor: Any?
     private var localClickMonitor: Any?
     private var localKeyMonitor: Any?
+    private var globalScrollMonitor: Any?
     private var localScrollMonitor: Any?
     private var widthTierIndex = 0
     private var backgroundMode: MarkdownRenderer.BackgroundMode = .white
@@ -234,8 +235,26 @@ final class PreviewPanelController: NSObject, WKNavigationDelegate {
     }
 
     private func installScrollMonitors() {
-        // Local-only for the same reason as installKeyMonitors. A global scroll
-        // monitor would cause Finder's view to scroll underneath the preview.
+        // Scroll uses both monitors on purpose, unlike key input.
+        //
+        // Right after a hover-triggered show, the cursor is usually still over
+        // Finder, not over the panel. The local monitor never sees scroll events
+        // dispatched to Finder's window, so without a global monitor the user
+        // would have to first move the pointer into the panel before the wheel
+        // could scroll the preview — that breaks the "hover-then-scroll" flow.
+        //
+        // We accept that the wheel will also scroll Finder's list underneath the
+        // preview while it is hot. That bleed is far less harmful than the key
+        // bleed: scroll direction matches user intent in both surfaces, the
+        // Finder list is largely hidden by the panel, and nothing about Finder's
+        // selection state changes. The PR2 CGEventTap will replace this with a
+        // proper consume-and-route policy.
+        globalScrollMonitor = NSEvent.addGlobalMonitorForEvents(matching: .scrollWheel) { [weak self] event in
+            Task { @MainActor in
+                _ = self?.handlePotentialScroll(event, canConsume: false)
+            }
+        }
+
         localScrollMonitor = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { [weak self] event in
             guard let self else { return event }
             return self.handlePotentialScroll(event, canConsume: true) ? nil : event
