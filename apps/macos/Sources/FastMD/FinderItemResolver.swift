@@ -33,7 +33,11 @@ final class FinderItemResolver {
     private let titleAttributeNames = ["AXTitle", "AXValue", "AXDescription", "AXLabel", "AXHelp"]
     private let rowRoleNames = ["AXRow", "AXOutlineRow"]
     private let cellRoleNames = ["AXCell"]
-    private let iconHitRoleNames = ["AXImage"]
+    // AXImage is the icon itself; AXStaticText is the filename label beside it.
+    // Labels are often visually larger than the icon, so hover hit-tests land on
+    // the text element more often than on the image. Both should anchor on the
+    // enclosing group and BFS siblings.
+    private let iconHitRoleNames = ["AXImage", "AXStaticText"]
     private let maxLineageDepth = 12
     private let maxSubtreeDepth = 3
     private let maxSubtreeNodes = 48
