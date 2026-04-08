@@ -128,6 +128,11 @@ final class FinderHoverCoordinator {
                 point.y
             )
         )
+        let selectionSnapshot = selectionResolver.snapshotHolder.current
+        if selectionSnapshot.blocksPreviewTriggers {
+            RuntimeLogger.log("Hover pause ignored because Finder text input is active.")
+            return
+        }
         if previewPanel.isEditing {
             RuntimeLogger.log("Hover pause ignored because preview edit mode is active.")
             return

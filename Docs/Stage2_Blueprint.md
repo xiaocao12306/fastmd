@@ -533,7 +533,9 @@ Checklist reset rule:
 - [ ] Optimize the macOS preview rendering pipeline so Markdown display feels pre-rendered and visually non-blocking
 - [ ] Support `.md` preview triggering in Finder non-list presentation modes instead of list-view-only behavior
 - [ ] Allow the macOS preview window to be dragged by its top chrome without breaking hover semantics
-- [ ] Ensure Finder rename interactions never trigger preview opening or replacement
+- [x] Ensure Finder rename interactions never trigger preview opening or replacement
+
+_Worker 1 note (2026-04-09): the macOS reference app now routes both hover-open and Space-key preview triggers through the same Finder text-input snapshot, so rename fields, search fields, and path-bar editors suppress preview opening and replacement until text editing ends._
 
 ### Layer 6 — One-To-One Windows 11 Explorer Parity
 

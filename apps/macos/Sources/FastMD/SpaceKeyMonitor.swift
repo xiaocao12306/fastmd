@@ -284,7 +284,7 @@ private let spaceKeyTapCallback: CGEventTapCallBack = {
         return Unmanaged.passUnretained(event)
     }
 
-    if snapshot.isFinderEditingText {
+    if snapshot.blocksPreviewTriggers {
         return Unmanaged.passUnretained(event)
     }
 

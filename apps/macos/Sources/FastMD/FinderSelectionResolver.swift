@@ -30,14 +30,21 @@ struct FinderSelectionSnapshot: Sendable {
     let finderPid: pid_t
     /// True when Finder's focused AX element is a text input — rename field,
     /// search field, path bar editor, etc. Even with a markdown file selected,
-    /// Space must pass through when this is true so the user can type in the
-    /// text field. Always false until AX observer integration lands.
+    /// preview triggers must pass through when this is true so the user can
+    /// keep typing in the text field.
     let isFinderEditingText: Bool
     /// Mirrors `PreferencesStore.spaceTriggerEnabled`. The tap checks this
     /// synchronously instead of reaching across threads into the store.
     let spaceTriggerEnabled: Bool
     /// Monotonic counter across all store operations.
     let generation: UInt64
+
+    /// Finder rename/search/path text editors must suppress both Space-key
+    /// preview toggles and hover-driven preview open/replacement until text
+    /// editing ends.
+    var blocksPreviewTriggers: Bool {
+        isFinderEditingText
+    }
 
     static let empty = FinderSelectionSnapshot(
         state: .unknown,

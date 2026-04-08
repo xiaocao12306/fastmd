@@ -98,3 +98,24 @@ func markdownRendererPreservesCJKFixtureText() throws {
     #expect(rendered.contains("UTF-8 Markdown 内容"))
     #expect(rendered.contains("\"widthTiers\":[560,960,1440,1920]"))
 }
+
+@Test
+func finderSelectionSnapshotBlocksPreviewTriggersWhileFinderEditsText() {
+    let blocked = FinderSelectionSnapshot(
+        state: .markdown(url: URL(fileURLWithPath: "/tmp/rename-target.md")),
+        finderPid: 42,
+        isFinderEditingText: true,
+        spaceTriggerEnabled: true,
+        generation: 1
+    )
+    let allowed = FinderSelectionSnapshot(
+        state: .markdown(url: URL(fileURLWithPath: "/tmp/rename-target.md")),
+        finderPid: 42,
+        isFinderEditingText: false,
+        spaceTriggerEnabled: true,
+        generation: 2
+    )
+
+    #expect(blocked.blocksPreviewTriggers)
+    #expect(!allowed.blocksPreviewTriggers)
+}
