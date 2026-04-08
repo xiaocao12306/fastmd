@@ -38,11 +38,16 @@ pub fn macos_reference_preview_feature_coverage() -> Vec<MacOsPreviewFeature> {
     ])
 }
 
+pub const MACOS_REFERENCE_PRERENDER_EVIDENCE: &str = "The macOS reference app now warms both hover and selection-triggered Markdown documents before open, reuses the pre-rendered HTML snapshot when the debounce completes, and invalidates warmed entries when the source file changes so the displayed preview stays current without doing its full file read/render work on the open path.";
+
 #[cfg(test)]
 mod tests {
+    use std::fs;
+    use std::path::{Path, PathBuf};
+
     use super::{
         macos_reference_adapter_preview_feature_coverage, macos_reference_preview_feature_coverage,
-        MacOSAdapterState, STAGE2_REFERENCE_HOST,
+        MacOSAdapterState, MACOS_REFERENCE_PRERENDER_EVIDENCE, STAGE2_REFERENCE_HOST,
     };
     use fastmd_contracts::{
         macos_preview_feature_list, preview_feature_coverage_matches_reference,
@@ -61,6 +66,20 @@ mod tests {
             MacOSAdapterState::default(),
             MacOSAdapterState::ReferenceOnly
         );
+    }
+
+    fn repo_root() -> PathBuf {
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .expect("crate dir should have a parent")
+            .parent()
+            .expect("workspace crates dir should have a parent")
+            .to_path_buf()
+    }
+
+    fn macos_source(relative_path: &str) -> String {
+        fs::read_to_string(repo_root().join(relative_path))
+            .unwrap_or_else(|error| panic!("failed to read {relative_path}: {error}"))
     }
 
     #[test]
@@ -96,5 +115,24 @@ mod tests {
             macos_reference_adapter_preview_feature_coverage(),
         ])
         .is_empty());
+    }
+
+    #[test]
+    fn macos_reference_prerender_evidence_stays_backed_by_reference_source_hooks() {
+        let coordinator = macos_source("apps/macos/Sources/FastMD/FinderHoverCoordinator.swift");
+        let hover_monitor = macos_source("apps/macos/Sources/FastMD/HoverMonitorService.swift");
+        let selection = macos_source("apps/macos/Sources/FastMD/FinderSelectionResolver.swift");
+        let panel = macos_source("apps/macos/Sources/FastMD/PreviewPanelController.swift");
+
+        assert!(MACOS_REFERENCE_PRERENDER_EVIDENCE.contains("warms both hover and selection-triggered Markdown documents before open"));
+        assert!(hover_monitor.contains("var onHoverWarmup"));
+        assert!(coordinator.contains("handleHoverWarmup"));
+        assert!(coordinator.contains("pendingWarmedHoverItem"));
+        assert!(coordinator.contains("prepareMarkdown(fileURL:"));
+        assert!(selection.contains("var onSnapshotChanged"));
+        assert!(panel.contains("func prepareMarkdown(fileURL: URL)"));
+        assert!(panel.contains("WarmedPreviewLoader.load"));
+        assert!(panel.contains("WarmedPreviewCache"));
+        assert!(panel.contains("warmed=%@"));
     }
 }

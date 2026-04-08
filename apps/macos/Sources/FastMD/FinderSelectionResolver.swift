@@ -97,6 +97,7 @@ final class SelectionSnapshotHolder: @unchecked Sendable {
 @MainActor
 final class FinderSelectionResolver {
     let snapshotHolder = SelectionSnapshotHolder()
+    var onSnapshotChanged: ((FinderSelectionSnapshot) -> Void)?
 
     private var generationCounter: UInt64 = 0
     private var finderPid: pid_t = 0
@@ -345,6 +346,7 @@ final class FinderSelectionResolver {
             generation: generationCounter
         )
         snapshotHolder.store(snapshot)
+        onSnapshotChanged?(snapshot)
 
         let stateText: String
         switch state {

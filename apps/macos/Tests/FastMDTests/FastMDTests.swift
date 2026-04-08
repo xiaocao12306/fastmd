@@ -28,6 +28,18 @@ private func normalizedFixtureText(_ value: String) -> String {
         .trimmingCharacters(in: .newlines)
 }
 
+private func makeTempMarkdownURL(
+    fileName: String = "preview.md",
+    contents: String
+) throws -> URL {
+    let directory = FileManager.default.temporaryDirectory
+        .appendingPathComponent(UUID().uuidString, isDirectory: true)
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    let fileURL = directory.appendingPathComponent(fileName)
+    try contents.write(to: fileURL, atomically: true, encoding: .utf8)
+    return fileURL
+}
+
 @Test
 func markdownRendererEmbedsPreviewChromeAndFeatureScripts() async throws {
     let markdown = """
@@ -118,4 +130,48 @@ func finderSelectionSnapshotBlocksPreviewTriggersWhileFinderEditsText() {
 
     #expect(blocked.blocksPreviewTriggers)
     #expect(!allowed.blocksPreviewTriggers)
+}
+
+@Test
+func warmedPreviewLoaderCapturesRenderedHTMLForTheCurrentChromeState() throws {
+    let fileURL = try makeTempMarkdownURL(contents: "# Warmed\n\nBody")
+    let snapshot = try WarmedPreviewLoader.load(
+        fileURL: fileURL,
+        selectedWidthTierIndex: 3,
+        backgroundMode: .black
+    )
+
+    #expect(snapshot.fileURL.standardizedFileURL == fileURL.standardizedFileURL)
+    #expect(snapshot.markdown == "# Warmed\n\nBody")
+    #expect(snapshot.html.contains("\"selectedWidthTierIndex\":3"))
+    #expect(snapshot.html.contains("\"backgroundMode\":\"black\""))
+    #expect(snapshot.html.contains("FastMD Preview"))
+}
+
+@Test
+func warmedPreviewCacheDropsSnapshotsAfterTheSourceFileChanges() throws {
+    let fileURL = try makeTempMarkdownURL(contents: "# Warmed\n\nBody")
+    let cache = WarmedPreviewCache()
+    let initialSnapshot = try WarmedPreviewLoader.load(
+        fileURL: fileURL,
+        selectedWidthTierIndex: 1,
+        backgroundMode: .white
+    )
+    cache.store(initialSnapshot)
+
+    let cachedBeforeChange = cache.snapshot(
+        for: fileURL,
+        selectedWidthTierIndex: 1,
+        backgroundMode: .white
+    )
+    #expect(cachedBeforeChange?.markdown == "# Warmed\n\nBody")
+
+    try "# Changed\n\nBody\n\nAgain".write(to: fileURL, atomically: true, encoding: .utf8)
+
+    let cachedAfterChange = cache.snapshot(
+        for: fileURL,
+        selectedWidthTierIndex: 1,
+        backgroundMode: .white
+    )
+    #expect(cachedAfterChange == nil)
 }

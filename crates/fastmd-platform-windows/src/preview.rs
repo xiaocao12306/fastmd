@@ -667,16 +667,10 @@ fn preview_placement_runtime_diagnostic(
     .with_detail("frame_y", format!("{:.1}", request.frame.y))
     .with_detail("frame_width", format!("{:.1}", request.frame.width))
     .with_detail("frame_height", format!("{:.1}", request.frame.height))
-    .with_detail(
-        "warmed_document",
-        request.warmed_document.is_some().to_string(),
-    );
+    .with_detail("warmed_document", request.is_prewarmed().to_string());
 
-    if let Some(loaded_document) = request.warmed_document.as_ref() {
-        diagnostic = diagnostic.with_detail(
-            "warmed_markdown_line_count",
-            loaded_document.markdown.lines().count().to_string(),
-        );
+    if let Some(line_count) = request.warmed_markdown_line_count() {
+        diagnostic = diagnostic.with_detail("warmed_markdown_line_count", line_count.to_string());
     }
 
     if let Some(at_ms) = at_ms {

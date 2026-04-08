@@ -1652,6 +1652,12 @@ pub struct LoadedDocument {
     pub markdown: String,
 }
 
+impl LoadedDocument {
+    pub fn line_count(&self) -> usize {
+        self.markdown.lines().count()
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FrontSurfaceIdentity {
     pub native_window_id: String,
@@ -1755,6 +1761,18 @@ pub struct PreviewWindowRequest {
     pub monitor_id: Option<String>,
     #[serde(default)]
     pub warmed_document: Option<LoadedDocument>,
+}
+
+impl PreviewWindowRequest {
+    pub fn is_prewarmed(&self) -> bool {
+        self.warmed_document.is_some()
+    }
+
+    pub fn warmed_markdown_line_count(&self) -> Option<usize> {
+        self.warmed_document
+            .as_ref()
+            .map(LoadedDocument::line_count)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -3128,6 +3146,23 @@ mod tests {
             serde_json::from_value(encoded).expect("legacy request payload should deserialize");
 
         assert!(decoded.warmed_document.is_none());
+        assert!(!decoded.is_prewarmed());
+        assert_eq!(decoded.warmed_markdown_line_count(), None);
+    }
+
+    #[test]
+    fn preview_window_request_reports_warmed_document_details() {
+        let request = sample_preview_request();
+
+        assert!(request.is_prewarmed());
+        assert_eq!(request.warmed_markdown_line_count(), Some(1));
+        assert_eq!(
+            request
+                .warmed_document
+                .as_ref()
+                .map(LoadedDocument::line_count),
+            Some(1)
+        );
     }
 
     #[test]

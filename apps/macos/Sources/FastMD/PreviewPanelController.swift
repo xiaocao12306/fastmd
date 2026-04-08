@@ -6,6 +6,106 @@ private final class PreviewPanelWindow: NSPanel {
     override var canBecomeMain: Bool { false }
 }
 
+struct WarmedPreviewKey: Hashable {
+    let path: String
+    let selectedWidthTierIndex: Int
+    let backgroundMode: MarkdownRenderer.BackgroundMode
+}
+
+struct WarmedPreviewFingerprint: Equatable {
+    let contentModificationDate: Date?
+    let fileSize: Int?
+
+    static func capture(for fileURL: URL) -> WarmedPreviewFingerprint {
+        let values = try? fileURL.resourceValues(forKeys: [.contentModificationDateKey, .fileSizeKey])
+        return WarmedPreviewFingerprint(
+            contentModificationDate: values?.contentModificationDate,
+            fileSize: values?.fileSize
+        )
+    }
+
+    func matches(fileURL: URL) -> Bool {
+        Self.capture(for: fileURL) == self
+    }
+}
+
+struct WarmedPreviewSnapshot {
+    let key: WarmedPreviewKey
+    let fileURL: URL
+    let title: String
+    let markdown: String
+    let html: String
+    let contentBaseURL: URL
+    let fingerprint: WarmedPreviewFingerprint
+}
+
+enum WarmedPreviewLoader {
+    static func load(
+        fileURL: URL,
+        selectedWidthTierIndex: Int,
+        backgroundMode: MarkdownRenderer.BackgroundMode
+    ) throws -> WarmedPreviewSnapshot {
+        let normalizedURL = fileURL.standardizedFileURL
+        let markdown = try String(contentsOf: normalizedURL, encoding: .utf8)
+        let contentBaseURL = normalizedURL.deletingLastPathComponent()
+        let html = MarkdownRenderer.renderHTML(
+            from: markdown,
+            title: normalizedURL.lastPathComponent,
+            selectedWidthTierIndex: selectedWidthTierIndex,
+            backgroundMode: backgroundMode,
+            contentBaseURL: contentBaseURL
+        )
+
+        return WarmedPreviewSnapshot(
+            key: WarmedPreviewKey(
+                path: normalizedURL.path,
+                selectedWidthTierIndex: selectedWidthTierIndex,
+                backgroundMode: backgroundMode
+            ),
+            fileURL: normalizedURL,
+            title: normalizedURL.lastPathComponent,
+            markdown: markdown,
+            html: html,
+            contentBaseURL: contentBaseURL,
+            fingerprint: WarmedPreviewFingerprint.capture(for: normalizedURL)
+        )
+    }
+}
+
+final class WarmedPreviewCache {
+    private var snapshots: [WarmedPreviewKey: WarmedPreviewSnapshot] = [:]
+
+    func snapshot(
+        for fileURL: URL,
+        selectedWidthTierIndex: Int,
+        backgroundMode: MarkdownRenderer.BackgroundMode
+    ) -> WarmedPreviewSnapshot? {
+        let normalizedURL = fileURL.standardizedFileURL
+        let key = WarmedPreviewKey(
+            path: normalizedURL.path,
+            selectedWidthTierIndex: selectedWidthTierIndex,
+            backgroundMode: backgroundMode
+        )
+        guard let snapshot = snapshots[key] else {
+            return nil
+        }
+        guard snapshot.fingerprint.matches(fileURL: normalizedURL) else {
+            snapshots.removeValue(forKey: key)
+            return nil
+        }
+        return snapshot
+    }
+
+    func store(_ snapshot: WarmedPreviewSnapshot) {
+        snapshots[snapshot.key] = snapshot
+    }
+
+    func invalidate(fileURL: URL) {
+        let normalizedPath = fileURL.standardizedFileURL.path
+        snapshots = snapshots.filter { $0.key.path != normalizedPath }
+    }
+}
+
 @MainActor
 final class PreviewPanelController: NSObject, WKNavigationDelegate {
     private let panel: PreviewPanelWindow
@@ -24,6 +124,8 @@ final class PreviewPanelController: NSObject, WKNavigationDelegate {
     private var interactionHot = false
     private var animationGeneration = 0
     private var pendingContentFadeIn = false
+    private let warmedPreviewCache = WarmedPreviewCache()
+    private var pendingWarmups: Set<WarmedPreviewKey> = []
 
     private let showAnimationDuration: TimeInterval = 0.27
     private let hideAnimationDuration: TimeInterval = 0.21
@@ -73,38 +175,88 @@ final class PreviewPanelController: NSObject, WKNavigationDelegate {
         installScrollMonitors()
     }
 
+    func prepareMarkdown(fileURL: URL) {
+        let normalizedURL = fileURL.standardizedFileURL
+        let key = WarmedPreviewKey(
+            path: normalizedURL.path,
+            selectedWidthTierIndex: widthTierIndex,
+            backgroundMode: backgroundMode
+        )
+
+        if warmedPreviewCache.snapshot(
+            for: normalizedURL,
+            selectedWidthTierIndex: widthTierIndex,
+            backgroundMode: backgroundMode
+        ) != nil || pendingWarmups.contains(key) {
+            return
+        }
+
+        pendingWarmups.insert(key)
+        DispatchQueue.global(qos: .utility).async { [selectedWidthTierIndex = widthTierIndex, backgroundMode] in
+            let snapshot = try? WarmedPreviewLoader.load(
+                fileURL: normalizedURL,
+                selectedWidthTierIndex: selectedWidthTierIndex,
+                backgroundMode: backgroundMode
+            )
+
+            DispatchQueue.main.async { [weak self] in
+                guard let self else { return }
+                self.pendingWarmups.remove(key)
+                guard let snapshot else {
+                    RuntimeLogger.log("Preview warmup failed for \(normalizedURL.path)")
+                    return
+                }
+                self.warmedPreviewCache.store(snapshot)
+                RuntimeLogger.log(
+                    "Preview warmup ready for \(snapshot.fileURL.path) widthTier=\(selectedWidthTierIndex) background=\(backgroundMode.rawValue)"
+                )
+            }
+        }
+    }
+
     func showMarkdown(fileURL: URL, near screenPoint: NSPoint) {
-        guard let markdown = try? String(contentsOf: fileURL, encoding: .utf8) else {
-            RuntimeLogger.log("Preview load failed for \(fileURL.path) using UTF-8.")
+        let normalizedURL = fileURL.standardizedFileURL
+        let warmedSnapshot = warmedPreviewCache.snapshot(
+            for: normalizedURL,
+            selectedWidthTierIndex: widthTierIndex,
+            backgroundMode: backgroundMode
+        )
+        let snapshot = warmedSnapshot ?? immediateSnapshot(fileURL: normalizedURL)
+        let reusedWarmup = warmedSnapshot != nil
+
+        guard let snapshot else {
+            RuntimeLogger.log("Preview load failed for \(normalizedURL.path) using UTF-8.")
             hide(force: true)
             return
         }
 
-        currentURL = fileURL
-        currentMarkdown = markdown
+        warmedPreviewCache.store(snapshot)
+        currentURL = snapshot.fileURL
+        currentMarkdown = snapshot.markdown
         lastAnchorPoint = screenPoint
         interactionHot = true
         let targetFrame = frameForPanel(near: screenPoint)
 
         if panel.isVisible {
-            loadPreview(markdown: markdown, title: fileURL.lastPathComponent, animatedContentTransition: true)
+            loadPreview(snapshot: snapshot, animatedContentTransition: true)
             animatePanel(to: targetFrame, alpha: 1.0, duration: resizeAnimationDuration)
             panel.makeKey()
             panel.makeFirstResponder(webView)
         } else {
-            loadPreview(markdown: markdown, title: fileURL.lastPathComponent, animatedContentTransition: false)
+            loadPreview(snapshot: snapshot, animatedContentTransition: false)
             presentPanel(at: targetFrame)
         }
 
         let origin = targetFrame.origin
         RuntimeLogger.log(
             String(
-                format: "Preview shown for %@ at panel origin x=%.1f y=%.1f widthTier=%d requestedWidth=%d",
-                fileURL.path,
+                format: "Preview shown for %@ at panel origin x=%.1f y=%.1f widthTier=%d requestedWidth=%d warmed=%@",
+                snapshot.fileURL.path,
                 origin.x,
                 origin.y,
                 widthTierIndex,
-                MarkdownRenderer.widthTiers[widthTierIndex]
+                MarkdownRenderer.widthTiers[widthTierIndex],
+                reusedWarmup ? "true" : "false"
             )
         )
     }
@@ -125,16 +277,7 @@ final class PreviewPanelController: NSObject, WKNavigationDelegate {
         RuntimeLogger.log("Preview hidden. previousURL=\(previousPath)")
     }
 
-    private func loadPreview(markdown: String, title: String, animatedContentTransition: Bool) {
-        let contentBaseURL = currentURL?.deletingLastPathComponent()
-        let html = MarkdownRenderer.renderHTML(
-            from: markdown,
-            title: title,
-            selectedWidthTierIndex: widthTierIndex,
-            backgroundMode: backgroundMode,
-            contentBaseURL: contentBaseURL
-        )
-
+    private func loadPreview(snapshot: WarmedPreviewSnapshot, animatedContentTransition: Bool) {
         if animatedContentTransition && panel.isVisible {
             pendingContentFadeIn = true
             NSAnimationContext.runAnimationGroup { context in
@@ -144,13 +287,34 @@ final class PreviewPanelController: NSObject, WKNavigationDelegate {
             } completionHandler: { [weak self] in
                 Task { @MainActor [weak self] in
                     guard let self else { return }
-                    self.loadRenderedHTML(html, markdown: markdown, contentBaseURL: contentBaseURL)
+                    self.loadRenderedHTML(
+                        snapshot.html,
+                        markdown: snapshot.markdown,
+                        contentBaseURL: snapshot.contentBaseURL
+                    )
                 }
             }
         } else {
             pendingContentFadeIn = false
             webView.alphaValue = 1.0
-            loadRenderedHTML(html, markdown: markdown, contentBaseURL: contentBaseURL)
+            loadRenderedHTML(
+                snapshot.html,
+                markdown: snapshot.markdown,
+                contentBaseURL: snapshot.contentBaseURL
+            )
+        }
+    }
+
+    private func immediateSnapshot(fileURL: URL) -> WarmedPreviewSnapshot? {
+        do {
+            return try WarmedPreviewLoader.load(
+                fileURL: fileURL,
+                selectedWidthTierIndex: widthTierIndex,
+                backgroundMode: backgroundMode
+            )
+        } catch {
+            RuntimeLogger.log("Preview load failed for \(fileURL.path): \(error)")
+            return nil
         }
     }
 
@@ -345,6 +509,9 @@ final class PreviewPanelController: NSObject, WKNavigationDelegate {
         }
         animateWidthTierIntoWebView()
         RuntimeLogger.log("Preview width tier changed to index \(widthTierIndex) width=\(MarkdownRenderer.widthTiers[widthTierIndex])")
+        if let currentURL {
+            prepareMarkdown(fileURL: currentURL)
+        }
     }
 
     private func syncWidthTierIntoWebView() {
@@ -362,6 +529,9 @@ final class PreviewPanelController: NSObject, WKNavigationDelegate {
         let script = "window.FastMD && window.FastMD.syncBackgroundMode(\"\(backgroundMode.rawValue)\");"
         webView.evaluateJavaScript(script, completionHandler: nil)
         RuntimeLogger.log("Preview background mode changed to \(backgroundMode.rawValue)")
+        if let currentURL {
+            prepareMarkdown(fileURL: currentURL)
+        }
     }
 
     private func scrollPreview(by delta: CGFloat) {
@@ -384,6 +554,8 @@ final class PreviewPanelController: NSObject, WKNavigationDelegate {
             try markdown.write(to: currentURL, atomically: true, encoding: .utf8)
             currentMarkdown = markdown
             isEditing = false
+            warmedPreviewCache.invalidate(fileURL: currentURL)
+            prepareMarkdown(fileURL: currentURL)
             RuntimeLogger.log("Inline block edit saved back to \(currentURL.path)")
             finishJavaScriptSave(success: true, message: nil)
         } catch {

@@ -530,7 +530,7 @@ Checklist reset rule:
 - [x] Preserve the current macOS close behavior while introducing shared-core wiring
 - [x] Add explicit parity tests or validation evidence that macOS behavior did not regress
 - [x] Keep the Swift shell or Tauri-backed macOS shell behaviorally identical to the current app until a later blueprint change explicitly says otherwise
-- [ ] Optimize the macOS preview rendering pipeline so Markdown display feels pre-rendered and visually non-blocking
+- [x] Optimize the macOS preview rendering pipeline so Markdown display feels pre-rendered and visually non-blocking
 - [x] Support `.md` preview triggering in Finder non-list presentation modes instead of list-view-only behavior
 - [ ] Allow the macOS preview window to be dragged by its top chrome without breaking hover semantics
 - [x] Ensure Finder rename interactions never trigger preview opening or replacement
@@ -538,6 +538,8 @@ Checklist reset rule:
 _Worker 1 note (2026-04-09): the macOS reference app now routes both hover-open and Space-key preview triggers through the same Finder text-input snapshot, so rename fields, search fields, and path-bar editors suppress preview opening and replacement until text editing ends._
 
 _Worker 1 note (2026-04-09): the macOS reference `FinderItemResolver` already mirrors icon-view hover by treating `AXImage` / `AXStaticText` hits as a non-list anchor, shifting the BFS root to the parent group, and resolving sibling Markdown path or filename evidence instead of staying list-view-only._
+
+_Worker 1 note (2026-04-09): the macOS reference preview pipeline now warms Markdown documents before open from both the hover debounce warmup path and the debounced Finder selection snapshot, then reuses the pre-rendered HTML snapshot on show and invalidates warmed entries whenever the backing file changes. This closes the macOS pre-render/non-blocking item without weakening current hover timing, Space-trigger behavior, or edit-mode locks._
 
 ### Layer 6 — One-To-One Windows 11 Explorer Parity
 

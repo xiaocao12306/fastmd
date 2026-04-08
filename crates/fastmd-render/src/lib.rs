@@ -4,7 +4,8 @@ use fastmd_contracts::{
     HintChipContract, HintChipVisualReference, HtmlBlockRenderingReference,
     InlineMarkupRenderingReference, LoadedDocument, MacOsPreviewFeature, MermaidRenderingReference,
     ParagraphRenderingReference, PreviewFeatureCoverageLane, PreviewFeatureCoverageRecord,
-    RenderingReference, RuntimeDiagnostic, SyntaxHighlightingRenderingReference,
+    PreviewWindowRequest, RenderingReference, RuntimeDiagnostic,
+    SyntaxHighlightingRenderingReference,
     TableRenderingReference, TaskListRenderingReference, MACOS_REFERENCE_BEHAVIOR,
 };
 use serde::{Deserialize, Serialize};
@@ -509,6 +510,16 @@ pub fn preview_model_from_loaded_document(
     )
 }
 
+pub fn preview_model_from_prewarmed_request(request: &PreviewWindowRequest) -> Option<PreviewModel> {
+    request.warmed_document.as_ref().map(|loaded_document| {
+        preview_model_from_loaded_document(
+            loaded_document,
+            request.selected_width_tier_index,
+            request.background_mode,
+        )
+    })
+}
+
 pub fn find_smallest_matching_block(blocks: &[BlockMapping], line: u32) -> Option<BlockMapping> {
     blocks
         .iter()
@@ -781,6 +792,39 @@ mod tests {
         assert_eq!(model.chrome.background_mode, BackgroundMode::Black);
         assert!(model.block_mappings.is_empty());
         assert!(model.inline_editor.is_none());
+    }
+
+    #[test]
+    fn preview_model_from_prewarmed_request_uses_the_attached_loaded_document() {
+        let loaded_document = LoadedDocument {
+            document: fastmd_contracts::ResolvedDocument::new(
+                "/Users/example/Docs/spec.md",
+                "spec.md",
+                fastmd_contracts::DocumentOrigin::LocalFileSystem,
+                fastmd_contracts::DocumentKind::File,
+            ),
+            encoding: "utf-8".to_string(),
+            markdown: "# Warmed".to_string(),
+        };
+        let request = fastmd_contracts::PreviewWindowRequest {
+            document: loaded_document.document.clone(),
+            title: "spec.md".to_string(),
+            anchor: fastmd_contracts::ScreenPoint::new(120.0, 340.0),
+            frame: fastmd_contracts::ScreenRect::new(64.0, 96.0, 960.0, 720.0),
+            selected_width_tier_index: 1,
+            requested_width_px: 960,
+            background_mode: BackgroundMode::White,
+            interaction_hot: true,
+            monitor_id: Some("display-main".to_string()),
+            warmed_document: Some(loaded_document),
+        };
+
+        let model = preview_model_from_prewarmed_request(&request).expect("prewarmed model");
+
+        assert_eq!(model.document.title, "spec.md");
+        assert_eq!(model.document.markdown, "# Warmed");
+        assert_eq!(model.chrome.selected_width_tier_index, 1);
+        assert_eq!(model.chrome.background_mode, BackgroundMode::White);
     }
 
     #[test]

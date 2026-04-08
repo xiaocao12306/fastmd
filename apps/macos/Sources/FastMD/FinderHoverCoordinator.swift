@@ -8,6 +8,7 @@ final class FinderHoverCoordinator {
     private let selectionResolver = FinderSelectionResolver()
     private let previewPanel = PreviewPanelController()
     private let spaceKeyMonitor: SpaceKeyMonitor
+    private var pendingWarmedHoverItem: HoveredMarkdownItem?
     private var currentItem: HoveredMarkdownItem?
     /// When true, the currently visible preview was opened by a Space-key
     /// toggle (not by hover). Hover pause events suppress the usual
@@ -20,8 +21,17 @@ final class FinderHoverCoordinator {
     init() {
         self.spaceKeyMonitor = SpaceKeyMonitor(snapshotHolder: selectionResolver.snapshotHolder)
 
+        hoverMonitor.onMouseActivity = { [weak self] in
+            self?.pendingWarmedHoverItem = nil
+        }
+        hoverMonitor.onHoverWarmup = { [weak self] point in
+            self?.handleHoverWarmup(at: point)
+        }
         hoverMonitor.onHoverPause = { [weak self] point in
             self?.handleHoverPause(at: point)
+        }
+        selectionResolver.onSnapshotChanged = { [weak self] snapshot in
+            self?.handleSelectionSnapshot(snapshot)
         }
         previewPanel.onOutsideClick = { [weak self] in
             self?.hideCurrentPreview(reason: "Clicked outside preview.")
@@ -130,18 +140,23 @@ final class FinderHoverCoordinator {
         )
         let selectionSnapshot = selectionResolver.snapshotHolder.current
         if selectionSnapshot.blocksPreviewTriggers {
+            pendingWarmedHoverItem = nil
             RuntimeLogger.log("Hover pause ignored because Finder text input is active.")
             return
         }
         if previewPanel.isEditing {
+            pendingWarmedHoverItem = nil
             RuntimeLogger.log("Hover pause ignored because preview edit mode is active.")
             return
         }
         if isOpenedBySpace && previewPanel.isVisible {
+            pendingWarmedHoverItem = nil
             RuntimeLogger.log("Hover pause ignored because preview is currently Space-owned.")
             return
         }
-        guard let item = resolver.resolveMarkdown(at: point) else {
+        let item = pendingWarmedHoverItem ?? resolver.resolveMarkdown(at: point)
+        pendingWarmedHoverItem = nil
+        guard let item else {
             RuntimeLogger.log("Resolver returned nil for hover point. Keeping current preview state.")
             return
         }
@@ -160,6 +175,35 @@ final class FinderHoverCoordinator {
         RuntimeLogger.log("Resolved markdown item: \(item.fileURL.path) via \(item.elementDescription)")
         previewPanel.showMarkdown(fileURL: item.fileURL, near: point)
         spaceKeyMonitor.setPreviewVisible(true)
+    }
+
+    private func handleHoverWarmup(at point: NSPoint) {
+        guard isRunning else { return }
+        let selectionSnapshot = selectionResolver.snapshotHolder.current
+        if selectionSnapshot.blocksPreviewTriggers || previewPanel.isEditing {
+            pendingWarmedHoverItem = nil
+            return
+        }
+        if isOpenedBySpace && previewPanel.isVisible {
+            pendingWarmedHoverItem = nil
+            return
+        }
+        guard let item = resolver.resolveMarkdown(at: point) else {
+            pendingWarmedHoverItem = nil
+            return
+        }
+        pendingWarmedHoverItem = item
+        previewPanel.prepareMarkdown(fileURL: item.fileURL)
+        RuntimeLogger.log("Hover warmup prepared \(item.fileURL.path) via \(item.elementDescription)")
+    }
+
+    private func handleSelectionSnapshot(_ snapshot: FinderSelectionSnapshot) {
+        guard snapshot.spaceTriggerEnabled else { return }
+        guard !snapshot.blocksPreviewTriggers else { return }
+        guard case .markdown(let url) = snapshot.state else { return }
+
+        previewPanel.prepareMarkdown(fileURL: url)
+        RuntimeLogger.log("Selection warmup prepared \(url.path)")
     }
 
     /// Called by SpaceKeyMonitor when the user presses Space while Finder is
@@ -201,6 +245,7 @@ final class FinderHoverCoordinator {
         let previousPath = currentItem?.fileURL.path ?? "none"
         guard currentItem != nil || previewPanel.isVisible else { return }
         currentItem = nil
+        pendingWarmedHoverItem = nil
         isOpenedBySpace = false
         RuntimeLogger.log("\(reason) Clearing current preview item \(previousPath)")
         previewPanel.hide(force: force)
